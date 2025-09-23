@@ -1,0 +1,14 @@
+# สร้างโปรเจกต์ (vite react + ts)
+npm create vite@latest admin-dashboard -- --template react-ts
+cd admin-dashboard
+
+# ติดตั้ง dependency รันครั้งแรก
+npm install
+
+
+# runtime deps
+npm install axios react-router-dom jwt-decode
+
+# dev deps for Tailwind
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
