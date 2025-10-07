@@ -12,3 +12,17 @@ npm install axios react-router-dom jwt-decode
 # dev deps for Tailwind
 npm install -D tailwindcss postcss autoprefixer
 npx tailwindcss init -p
+
+admin password 
+admin@admail.com
+admin123
+
+
+
+
+external tool
+npm install multer (for upload) and run this in carbon-clean-app
+
+npm install react-quill
+
+ 
