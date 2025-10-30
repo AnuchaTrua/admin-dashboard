@@ -73,4 +73,4 @@ export default defineConfig([
 what to add is add the carbon reduction graph or or number for everyone, highest , avg
 find every neccesary data for this dashboard 
 
-do analys after this
+do analys after this (analyze what activity should add , how to reduce more carbon)
