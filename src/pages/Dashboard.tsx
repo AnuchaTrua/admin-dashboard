@@ -4,6 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell, Legend, BarChart, Bar, AreaChart, Area
 } from 'recharts';
+import ActivityExplorer from '../components/ActivityExplorer';
 
 /** ================= Types ================= */
 type Summary = {
@@ -455,6 +456,8 @@ export default function Dashboard() {
       <div className="text-xs text-slate-400">
         Tips: ใช้ตัวกรอง “Charts: Walk/Bike” เพื่อสลับอินไซต์ของกราฟ และปรับ Leaderboard เป็น Carbon/Distance ได้จาก toolbar ด้านบน
       </div>
+      <ActivityExplorer />
     </div>
+    
   );
 }
