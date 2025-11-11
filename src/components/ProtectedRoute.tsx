@@ -1,18 +1,14 @@
-import React from 'react';
-import { Navigate } from 'react-router-dom';
+// ก่อนมี import React ... ไม่จำเป็นแล้ว
+import { Navigate, useLocation } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-export default function ProtectedRoute({ children }: { children: JSX.Element }) {
-  const { token, user } = useAuth();
+export default function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { token } = useAuth();
+  const location = useLocation();
 
-  if (!token || !user) {
-    return <Navigate to="/login" replace />;
+  if (!token) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
-
-  if (user.role !== 'admin') {
-    // ถ้าต้องการหน้า Forbidden แยกก็ได้
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
+  return <>{children}</>;
 }

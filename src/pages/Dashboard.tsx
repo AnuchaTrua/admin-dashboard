@@ -163,16 +163,16 @@ export default function Dashboard() {
     name: s.status === 1 ? 'Active' : 'Blocked',
     value: s.count,
   }));
-  const rolePie = (summary?.role_breakdown ?? []).map(r => ({
-    name: r.role || '(unknown)',
-    value: r.count,
-  }));
+  // const rolePie = (summary?.role_breakdown ?? []).map(r => ({
+  //   name: r.role || '(unknown)',
+  //   value: r.count,
+  // }));
   const vehicleBars = summary?.vehicle_distribution ?? [];
   const monthlyData = summary?.monthly_signups ?? [];
-  const walkVsBike = [
-    { name: 'Walk', value: act?.walk_count ?? 0 },
-    { name: 'Bike', value: act?.bike_count ?? 0 },
-  ];
+  // const walkVsBike = [
+  //   { name: 'Walk', value: act?.walk_count ?? 0 },
+  //   { name: 'Bike', value: act?.bike_count ?? 0 },
+  // ];
 
   // tiny sparkline source
   const sparkData = monthlyData.map(d => ({ x: d.month, y: d.users }));

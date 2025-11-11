@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 
 type MinUser = { user_id: number; name: string; email: string };
