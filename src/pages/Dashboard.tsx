@@ -1,3 +1,4 @@
+// src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 import {
@@ -41,16 +42,30 @@ type HourRow = { hour: number; count: number };
 type DOWRow  = { dow: number; count: number };
 type HistRow = { bin: number; count: number };
 type LeaderRow = { user_id: number; name: string; total: number };
+type RecentRow = {
+  id: number;
+  user_id: number;
+  name: string;
+  type: 'walk'|'bike';
+  distance_km: number;
+  carbon: number;
+  pace_kmh: number | null;
+  record_date: string;
+};
 
 /** ================= Small UI Helpers ================= */
-const Section = ({ title, right, children }:{
+const Section = ({ title, subtitle, right, children }:{
   title: string;
+  subtitle?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
 }) => (
   <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
     <div className="px-5 py-4 flex items-center justify-between border-b">
-      <h3 className="text-base md:text-lg font-semibold text-slate-800">{title}</h3>
+      <div>
+        <h3 className="text-base md:text-lg font-semibold text-slate-800">{title}</h3>
+        {subtitle && <div className="text-xs text-slate-500">{subtitle}</div>}
+      </div>
       {right}
     </div>
     <div className="p-5">{children}</div>
@@ -101,21 +116,47 @@ const TinySpark = ({ data }:{ data:{x:string|number;y:number}[] }) => (
   </ResponsiveContainer>
 );
 
+// Build query params from window or custom range
+function makeTimeParams(windowStr: string, from?: string, to?: string) {
+  const params: any = {};
+  if (windowStr === 'custom') {
+    if (from) params.from = from;
+    if (to) params.to = to;
+  } else {
+    params.window = windowStr;
+  }
+  return params;
+}
+
 /** ================= Page ================= */
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
 
-  // dynamic filters
+  // ===== Charts filters =====
   const [chartType, setChartType] = useState<'walk'|'bike'>('walk');
-  const [lbWindow, setLbWindow] = useState<'7d'|'30d'|'90d'>('30d');
+  const [chartWindow, setChartWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('30d');
+  const [chartFrom, setChartFrom] = useState<string>('');
+  const [chartTo, setChartTo] = useState<string>('');
+
+  // ===== Leaderboard filters =====
+  const [lbWindow, setLbWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('30d');
   const [lbMetric, setLbMetric] = useState<'carbon'|'distance'>('carbon');
+  const [lbFrom, setLbFrom] = useState<string>('');
+  const [lbTo, setLbTo] = useState<string>('');
+
+  // ===== Recent activities filters =====
+  const [rcWindow, setRcWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('7d');
+  const [rcFrom, setRcFrom] = useState<string>('');
+  const [rcTo, setRcTo] = useState<string>('');
+  const [rcLimit, setRcLimit] = useState<number>(50);
 
   // insights data
   const [hourly, setHourly] = useState<HourRow[]>([]);
   const [weekday, setWeekday] = useState<DOWRow[]>([]);
   const [hist, setHist] = useState<HistRow[]>([]);
   const [leaders, setLeaders] = useState<LeaderRow[]>([]);
+  const [recent, setRecent] = useState<RecentRow[]>([]);
 
   const [error, setError] = useState<string | null>(null);
   const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -130,18 +171,31 @@ export default function Dashboard() {
     setError(null);
     setLoading(true);
     try {
-      const [sumRes, hourRes, dowRes, histRes, lbRes] = await Promise.all([
-        api.get('/admin/summary'),
-        api.get('/admin/insights/hourly',  { params: { type: chartType } }),
-        api.get('/admin/insights/weekday', { params: { type: chartType } }),
-        api.get('/admin/insights/distance_hist', { params: { type: chartType } }),
-        api.get('/admin/insights/leaderboard', { params: { window: lbWindow, metric: lbMetric } }),
-      ]);
+      // summary
+      const sumReq = api.get('/admin/summary');
+
+      // charts
+      const chartParams = { type: chartType, ...makeTimeParams(chartWindow, chartFrom, chartTo) };
+      const hourReq = api.get('/admin/insights/hourly',     { params: chartParams });
+      const dowReq  = api.get('/admin/insights/weekday',    { params: chartParams });
+      const histReq = api.get('/admin/insights/distance_hist', { params: chartParams });
+
+      // leaderboard
+      const lbParams = { metric: lbMetric, ...makeTimeParams(lbWindow, lbFrom, lbTo) };
+      const lbReq = api.get('/admin/insights/leaderboard',  { params: lbParams });
+
+      // recent activities
+      const rcParams = { limit: rcLimit, ...makeTimeParams(rcWindow, rcFrom, rcTo) };
+      const rcReq = api.get('/admin/recent-activities', { params: rcParams });
+
+      const [sumRes, hourRes, dowRes, histRes, lbRes, rcRes] = await Promise.all([sumReq, hourReq, dowReq, histReq, lbReq, rcReq]);
+
       setSummary(sumRes.data?.data ?? null);
       setHourly(hourRes.data?.data ?? []);
       setWeekday(dowRes.data?.data ?? []);
       setHist(histRes.data?.data ?? []);
       setLeaders(lbRes.data?.data ?? []);
+      setRecent(rcRes.data?.data ?? []);
     } catch (e:any) {
       console.error('Dashboard load error:', e);
       setError(e?.response?.data?.message || 'Failed to load dashboard');
@@ -150,81 +204,59 @@ export default function Dashboard() {
     }
   };
 
-  // initial
   useEffect(() => { fetchAll(); /* eslint-disable-next-line */ }, []);
-  // refetch when filters changed
-  useEffect(() => { fetchAll(); /* eslint-disable-next-line */ }, [chartType, lbWindow, lbMetric]);
+  useEffect(() => {
+    fetchAll();
+    // eslint-disable-next-line
+  }, [chartType, chartWindow, chartFrom, chartTo, lbWindow, lbMetric, lbFrom, lbTo, rcWindow, rcFrom, rcTo, rcLimit]);
 
   const ov = summary?.overview;
   const act = summary?.activity;
 
-  // mapping pies/bars
   const statusPie = (summary?.status_breakdown ?? []).map(s => ({
     name: s.status === 1 ? 'Active' : 'Blocked',
     value: s.count,
   }));
-  // const rolePie = (summary?.role_breakdown ?? []).map(r => ({
-  //   name: r.role || '(unknown)',
-  //   value: r.count,
-  // }));
   const vehicleBars = summary?.vehicle_distribution ?? [];
   const monthlyData = summary?.monthly_signups ?? [];
-  // const walkVsBike = [
-  //   { name: 'Walk', value: act?.walk_count ?? 0 },
-  //   { name: 'Bike', value: act?.bike_count ?? 0 },
-  // ];
-
-  // tiny sparkline source
   const sparkData = monthlyData.map(d => ({ x: d.month, y: d.users }));
+
+  const WindowPicker = ({
+    value, onChange, from, to, onFrom, onTo
+  }:{
+    value: string; onChange: (v:string)=>void;
+    from: string; to: string; onFrom: (v:string)=>void; onTo: (v:string)=>void;
+  }) => (
+    <div className="flex items-center gap-2">
+      <select
+        className="px-2 py-1 rounded-lg text-sm bg-white border"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      >
+        <option value="7d">Last 7d</option>
+        <option value="30d">Last 30d</option>
+        <option value="90d">Last 90d</option>
+        <option value="this_week">This Week</option>
+        <option value="this_month">This Month</option>
+        <option value="custom">Custom Range</option>
+      </select>
+      {value === 'custom' && (
+        <>
+          <input type="date" className="px-2 py-1 rounded-lg text-sm bg-white border" value={from} onChange={e=>onFrom(e.target.value)} />
+          <span className="text-slate-400">to</span>
+          <input type="date" className="px-2 py-1 rounded-lg text-sm bg-white border" value={to} onChange={e=>onTo(e.target.value)} />
+        </>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      {/* ===== Top Toolbar ===== */}
+      {/* ===== Header ===== */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
           <p className="text-slate-500 text-sm">Overview, usage insights, and carbon reduction</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2 bg-white border rounded-xl px-2 py-1">
-            <span className="text-xs text-slate-500">Charts</span>
-            <button
-              className={`px-3 py-1 rounded-lg text-sm ${chartType==='walk'?'bg-slate-900 text-white':'text-slate-700 hover:bg-slate-100'}`}
-              onClick={()=>setChartType('walk')}
-            >Walk</button>
-            <button
-              className={`px-3 py-1 rounded-lg text-sm ${chartType==='bike'?'bg-slate-900 text-white':'text-slate-700 hover:bg-slate-100'}`}
-              onClick={()=>setChartType('bike')}
-            >Bike</button>
-          </div>
-
-          <div className="flex items-center gap-2 bg-white border rounded-xl px-2 py-1">
-            <span className="text-xs text-slate-500">Leaderboard</span>
-            <select
-              className="px-2 py-1 rounded-lg text-sm bg-transparent"
-              value={lbWindow}
-              onChange={(e)=>setLbWindow(e.target.value as any)}
-            >
-              <option value="7d">7d</option>
-              <option value="30d">30d</option>
-              <option value="90d">90d</option>
-            </select>
-            <select
-              className="px-2 py-1 rounded-lg text-sm bg-transparent"
-              value={lbMetric}
-              onChange={(e)=>setLbMetric(e.target.value as any)}
-            >
-              <option value="carbon">Carbon</option>
-              <option value="distance">Distance</option>
-            </select>
-          </div>
-
-          <button
-            onClick={fetchAll}
-            className="px-3 py-2 rounded-xl bg-slate-900 text-white text-sm hover:opacity-90 active:opacity-80"
-          >
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -246,12 +278,8 @@ export default function Dashboard() {
             <StatCard title="Admins"        value={ov?.admins ?? 0} icon={<span>🛡️</span>} accent="violet"/>
             <StatCard title="New (7d)"      value={ov?.new_7d ?? 0} icon={<span>✨</span>} accent="amber"/>
             <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Growth Spark</div>
-                  <div className="text-xs text-slate-400 mt-1">Signups (12m)</div>
-                </div>
-              </div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Growth Spark</div>
+              <div className="text-xs text-slate-400 mt-1">Signups (12m)</div>
               <div className="mt-2"><TinySpark data={sparkData}/></div>
             </div>
           </>
@@ -282,15 +310,15 @@ export default function Dashboard() {
           </>
         ) : (
           <>
-            <StatCard title="Avg Walk / Activity" value={`${(act?.walk_avg_km ?? 0).toFixed(2)} km`} icon={<span>🚶</span>} accent="amber" hint="เฉลี่ยต่อครั้ง"/>
-            <StatCard title="Avg Bike / Activity"  value={`${(act?.bike_avg_km ?? 0).toFixed(2)} km`} icon={<span>🚴</span>} accent="amber" hint="เฉลี่ยต่อครั้ง"/>
+            <StatCard title="Avg Walk / Activity" value={`${(act?.walk_avg_km ?? 0).toFixed(2)} km`} icon={<span>🚶</span>} accent="amber" hint="per activity"/>
+            <StatCard title="Avg Bike / Activity"  value={`${(act?.bike_avg_km ?? 0).toFixed(2)} km`} icon={<span>🚴</span>} accent="amber" hint="per activity"/>
             <StatCard title="Avg Walk Pace" value={`${(act?.walk_avg_pace_kmh ?? 0).toFixed(2)} km/h`} icon={<span>⏱️</span>} accent="cyan"/>
             <StatCard title="Avg Bike Pace" value={`${(act?.bike_avg_pace_kmh ?? 0).toFixed(2)} km/h`} icon={<span>⚡</span>} accent="cyan"/>
           </>
         )}
       </div>
 
-      {/* ===== Growth & Composition ===== */}
+      {/* ===== User Growth & Mix ===== */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Section title="User Growth (Last 12 months)">
           <div className="h-72">
@@ -336,15 +364,37 @@ export default function Dashboard() {
         </Section>
       </div>
 
-      {/* ===== Activities & Vehicles ===== */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Section
-          title={`Activities by Hour (${chartType === 'walk' ? 'Walk' : 'Bike'})`}
-          right={
-            <div className="text-xs text-slate-500">Best posting time ≈ peak usage</div>
-          }
-        >
+      {/* ===== Activity Charts (with filters) ===== */}
+      <Section
+        title={`Activity Charts — ${chartType === 'walk' ? 'Walk' : 'Bike'}`}
+        subtitle="By Hour • By Weekday • Distance Histogram"
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 bg-white border rounded-xl px-2 py-1">
+              <span className="text-xs text-slate-500">Type</span>
+              <button
+                className={`px-3 py-1 rounded-lg text-sm ${chartType==='walk'?'bg-slate-900 text-white':'text-slate-700 hover:bg-slate-100'}`}
+                onClick={()=>setChartType('walk')}
+              >Walk</button>
+              <button
+                className={`px-3 py-1 rounded-lg text-sm ${chartType==='bike'?'bg-slate-900 text-white':'text-slate-700 hover:bg-slate-100'}`}
+                onClick={()=>setChartType('bike')}
+              >Bike</button>
+            </div>
+            <WindowPicker
+              value={chartWindow}
+              onChange={setChartWindow}
+              from={chartFrom}
+              to={chartTo}
+              onFrom={setChartFrom}
+              onTo={setChartTo}
+            />
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="h-72">
+            <div className="mb-2 text-sm text-slate-600">By Hour</div>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hourly}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -355,27 +405,8 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </Section>
-
-        <Section title="Vehicle Distribution (Top 8)">
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={vehicleBars}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="vehicle" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#10b981" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Section>
-      </div>
-
-      {/* ===== Patterns & Split ===== */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Section title={`Activities by Weekday (${chartType === 'walk' ? 'Walk' : 'Bike'})`}>
-          <div className="h-64">
+            <div className="mb-2 text-sm text-slate-600">By Weekday</div>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weekday.map(r=>({ name: dowToName(r.dow), count: r.count }))}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -386,10 +417,8 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </Section>
-
-        <Section title={`Distance Histogram (${chartType === 'walk' ? 'Walk' : 'Bike'})`}>
-          <div className="h-64">
+          <div className="h-72">
+            <div className="mb-2 text-sm text-slate-600">Distance Histogram</div>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hist}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -400,27 +429,33 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </Section>
-
-        <Section title="Activity Share (count)">
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={[{name:'Walk', value: act?.walk_count ?? 0},{name:'Bike', value: act?.bike_count ?? 0}]} dataKey="value" nameKey="name" outerRadius={100} label>
-                  {[0,1].map((i) => <Cell key={i} fill={i===0 ? '#2563eb' : '#10b981'} />)}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </Section>
-      </div>
+        </div>
+      </Section>
 
       {/* ===== Leaderboard ===== */}
       <Section
-        title={`Leaderboard — Top Users (${lbWindow}, by ${lbMetric})`}
-        right={<div className="text-xs text-slate-500">* รวม Walk + Bike</div>}
+        title={lbMetric === 'carbon' ? 'Carbon Reduction Leaderboard' : 'Distance Leaderboard'}
+        subtitle="Top users — Walk + Bike combined"
+        right={
+          <div className="flex items-center gap-2">
+            <select
+              className="px-2 py-1 rounded-lg text-sm bg-white border"
+              value={lbMetric}
+              onChange={(e)=>setLbMetric(e.target.value as any)}
+            >
+              <option value="carbon">Carbon</option>
+              <option value="distance">Distance</option>
+            </select>
+            <WindowPicker
+              value={lbWindow}
+              onChange={setLbWindow}
+              from={lbFrom}
+              to={lbTo}
+              onFrom={setLbFrom}
+              onTo={setLbTo}
+            />
+          </div>
+        }
       >
         <div className="overflow-x-auto">
           <table className="min-w-[560px] w-full text-sm">
@@ -432,12 +467,8 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {loading && (
-                <tr><td colSpan={3} className="p-4 text-center text-slate-400">Loading...</td></tr>
-              )}
-              {!loading && leaders.length === 0 && (
-                <tr><td colSpan={3} className="p-4 text-center text-slate-400">No data</td></tr>
-              )}
+              {loading && <tr><td colSpan={3} className="p-4 text-center text-slate-400">Loading...</td></tr>}
+              {!loading && leaders.length === 0 && <tr><td colSpan={3} className="p-4 text-center text-slate-400">No data</td></tr>}
               {!loading && leaders.map((r, i) => (
                 <tr key={r.user_id} className="border-t hover:bg-slate-50/60">
                   <td className="p-2">{i+1}</td>
@@ -452,12 +483,68 @@ export default function Dashboard() {
         </div>
       </Section>
 
-      {/* ===== Footer note ===== */}
+      {/* ===== Recent Activities (NEW) ===== */}
+      <Section
+        title="Recent Activities"
+        subtitle="Latest walk & bike records site-wide"
+        right={
+          <div className="flex items-center gap-2">
+            <WindowPicker
+              value={rcWindow}
+              onChange={setRcWindow}
+              from={rcFrom}
+              to={rcTo}
+              onFrom={setRcFrom}
+              onTo={setRcTo}
+            />
+            <input
+              type="number"
+              min={1}
+              max={200}
+              className="px-2 py-1 rounded-lg text-sm bg-white border w-20"
+              value={rcLimit}
+              onChange={(e)=>setRcLimit(Math.max(1, Math.min(200, Number(e.target.value || 50))))}
+              title="Limit"
+            />
+          </div>
+        }
+      >
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600">
+                <th className="p-2 text-left">When</th>
+                <th className="p-2 text-left">User</th>
+                <th className="p-2 text-left">Type</th>
+                <th className="p-2 text-right">Distance (km)</th>
+                <th className="p-2 text-right">Carbon (kg)</th>
+                <th className="p-2 text-right">Pace (km/h)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={6} className="p-4 text-center text-slate-400">Loading...</td></tr>}
+              {!loading && recent.length === 0 && <tr><td colSpan={6} className="p-4 text-center text-slate-400">No recent activities</td></tr>}
+              {!loading && recent.map((r) => (
+                <tr key={`${r.type}-${r.id}`} className="border-t hover:bg-slate-50/60">
+                  <td className="p-2">{new Date(r.record_date).toLocaleString()}</td>
+                  <td className="p-2">{r.name}</td>
+                  <td className="p-2 capitalize">{r.type}</td>
+                  <td className="p-2 text-right">{r.distance_km.toFixed(1)}</td>
+                  <td className="p-2 text-right">{r.carbon.toFixed(2)}</td>
+                  <td className="p-2 text-right">{r.pace_kmh == null ? '-' : r.pace_kmh.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
       <div className="text-xs text-slate-400">
-        Tips: ใช้ตัวกรอง “Charts: Walk/Bike” เพื่อสลับอินไซต์ของกราฟ และปรับ Leaderboard เป็น Carbon/Distance ได้จาก toolbar ด้านบน
+        Tips: ใช้ตัวกรองของแต่ละ Section แยกกันได้ (Charts / Leaderboard / Recent)
       </div>
+
+      {/* optional explorer เดิม */}
       <ActivityExplorer />
     </div>
-    
   );
 }
