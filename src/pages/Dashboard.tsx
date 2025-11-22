@@ -22,7 +22,6 @@ type Summary = {
   status_breakdown: { status: number; count: number }[];
   role_breakdown: { role: string; count: number }[];
   vehicle_distribution: { vehicle: string; count: number }[];
-  // activity ฟิลด์เดิมยังอยู่ แต่เราไม่โชว์การ์ด Avg/Distance แล้ว
   activity: {
     walk_count: number;
     bike_count: number;
@@ -53,6 +52,9 @@ type RecentRow = {
   record_date: string;
 };
 type Aggregates = { carbon_reduced: number; carbon_emitted: number };
+
+/** ✅ WindowKey กลางให้ทั้งหน้าใช้ร่วมกัน */
+type WindowKey = '7d' | '30d' | '90d' | 'this_week' | 'this_month' | 'custom';
 
 /** ================= Small UI Helpers ================= */
 const Section = ({ title, subtitle, right, children }:{
@@ -117,8 +119,8 @@ const TinySpark = ({ data }:{ data:{x:string|number;y:number}[] }) => (
   </ResponsiveContainer>
 );
 
-// Build query params from window or custom range
-function makeTimeParams(windowStr: string, from?: string, to?: string) {
+/** ✅ makeTimeParams รับ WindowKey ได้ */
+function makeTimeParams(windowStr: WindowKey, from?: string, to?: string) {
   const params: any = {};
   if (windowStr === 'custom') {
     if (from) params.from = from;
@@ -136,24 +138,24 @@ export default function Dashboard() {
 
   // ===== Charts filters =====
   const [chartType, setChartType] = useState<'walk'|'bike'>('walk');
-  const [chartWindow, setChartWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('30d');
+  const [chartWindow, setChartWindow] = useState<WindowKey>('30d');
   const [chartFrom, setChartFrom] = useState<string>('');
   const [chartTo, setChartTo] = useState<string>('');
 
   // ===== Leaderboard filters =====
-  const [lbWindow, setLbWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('30d');
+  const [lbWindow, setLbWindow] = useState<WindowKey>('30d');
   const [lbMetric, setLbMetric] = useState<'carbon'|'distance'>('carbon');
   const [lbFrom, setLbFrom] = useState<string>('');
   const [lbTo, setLbTo] = useState<string>('');
 
   // ===== Recent activities filters =====
-  const [rcWindow, setRcWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('7d');
+  const [rcWindow, setRcWindow] = useState<WindowKey>('7d');
   const [rcFrom, setRcFrom] = useState<string>('');
   const [rcTo, setRcTo] = useState<string>('');
   const [rcLimit, setRcLimit] = useState<number>(50);
 
   // ===== Carbon KPIs filters =====
-  const [agWindow, setAgWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('30d');
+  const [agWindow, setAgWindow] = useState<WindowKey>('30d');
   const [agFrom, setAgFrom] = useState<string>('');
   const [agTo, setAgTo] = useState<string>('');
   const [aggregates, setAggregates] = useState<Aggregates>({ carbon_reduced: 0, carbon_emitted: 0 });
@@ -236,17 +238,18 @@ export default function Dashboard() {
   const monthlyData = summary?.monthly_signups ?? [];
   const sparkData = monthlyData.map(d => ({ x: d.month, y: d.users }));
 
+  /** ✅ ปรับ WindowPicker ให้ใช้ WindowKey */
   const WindowPicker = ({
     value, onChange, from, to, onFrom, onTo
   }:{
-    value: string; onChange: (v:string)=>void;
+    value: WindowKey; onChange: (v: WindowKey)=>void;
     from: string; to: string; onFrom: (v:string)=>void; onTo: (v:string)=>void;
   }) => (
     <div className="flex items-center gap-2">
       <select
         className="px-2 py-1 rounded-lg text-sm bg-white border"
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => onChange(e.target.value as WindowKey)}
       >
         <option value="7d">Last 7d</option>
         <option value="30d">Last 30d</option>
