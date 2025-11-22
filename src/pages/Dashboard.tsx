@@ -1,4 +1,3 @@
-// src/pages/Dashboard.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
 import {
@@ -23,6 +22,7 @@ type Summary = {
   status_breakdown: { status: number; count: number }[];
   role_breakdown: { role: string; count: number }[];
   vehicle_distribution: { vehicle: string; count: number }[];
+  // activity ฟิลด์เดิมยังอยู่ แต่เราไม่โชว์การ์ด Avg/Distance แล้ว
   activity: {
     walk_count: number;
     bike_count: number;
@@ -52,6 +52,7 @@ type RecentRow = {
   pace_kmh: number | null;
   record_date: string;
 };
+type Aggregates = { carbon_reduced: number; carbon_emitted: number };
 
 /** ================= Small UI Helpers ================= */
 const Section = ({ title, subtitle, right, children }:{
@@ -151,6 +152,12 @@ export default function Dashboard() {
   const [rcTo, setRcTo] = useState<string>('');
   const [rcLimit, setRcLimit] = useState<number>(50);
 
+  // ===== Carbon KPIs filters =====
+  const [agWindow, setAgWindow] = useState<'7d'|'30d'|'90d'|'this_week'|'this_month'|'custom'>('30d');
+  const [agFrom, setAgFrom] = useState<string>('');
+  const [agTo, setAgTo] = useState<string>('');
+  const [aggregates, setAggregates] = useState<Aggregates>({ carbon_reduced: 0, carbon_emitted: 0 });
+
   // insights data
   const [hourly, setHourly] = useState<HourRow[]>([]);
   const [weekday, setWeekday] = useState<DOWRow[]>([]);
@@ -188,7 +195,12 @@ export default function Dashboard() {
       const rcParams = { limit: rcLimit, ...makeTimeParams(rcWindow, rcFrom, rcTo) };
       const rcReq = api.get('/admin/recent-activities', { params: rcParams });
 
-      const [sumRes, hourRes, dowRes, histRes, lbRes, rcRes] = await Promise.all([sumReq, hourReq, dowReq, histReq, lbReq, rcReq]);
+      // carbon aggregates
+      const agParams = makeTimeParams(agWindow, agFrom, agTo);
+      const agReq = api.get('/admin/insights/aggregates', { params: agParams });
+
+      const [sumRes, hourRes, dowRes, histRes, lbRes, rcRes, agRes] =
+        await Promise.all([sumReq, hourReq, dowReq, histReq, lbReq, rcReq, agReq]);
 
       setSummary(sumRes.data?.data ?? null);
       setHourly(hourRes.data?.data ?? []);
@@ -196,6 +208,7 @@ export default function Dashboard() {
       setHist(histRes.data?.data ?? []);
       setLeaders(lbRes.data?.data ?? []);
       setRecent(rcRes.data?.data ?? []);
+      setAggregates(agRes.data?.data ?? { carbon_reduced: 0, carbon_emitted: 0 });
     } catch (e:any) {
       console.error('Dashboard load error:', e);
       setError(e?.response?.data?.message || 'Failed to load dashboard');
@@ -208,16 +221,18 @@ export default function Dashboard() {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line
-  }, [chartType, chartWindow, chartFrom, chartTo, lbWindow, lbMetric, lbFrom, lbTo, rcWindow, rcFrom, rcTo, rcLimit]);
+  }, [
+    chartType, chartWindow, chartFrom, chartTo,
+    lbWindow, lbMetric, lbFrom, lbTo,
+    rcWindow, rcFrom, rcTo, rcLimit,
+    agWindow, agFrom, agTo
+  ]);
 
   const ov = summary?.overview;
-  const act = summary?.activity;
-
   const statusPie = (summary?.status_breakdown ?? []).map(s => ({
     name: s.status === 1 ? 'Active' : 'Blocked',
     value: s.count,
   }));
-  const vehicleBars = summary?.vehicle_distribution ?? [];
   const monthlyData = summary?.monthly_signups ?? [];
   const sparkData = monthlyData.map(d => ({ x: d.month, y: d.users }));
 
@@ -267,7 +282,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ===== KPI + Sparkline ===== */}
+      {/* ===== TOP KPIs: Users ===== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
         {loading && Array.from({length:6}).map((_,i)=><SkeletonCard key={i}/>)}
         {!loading && (
@@ -286,39 +301,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ===== Carbon + Activity KPIs ===== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading ? (
-          <>
-            <SkeletonCard/><SkeletonCard/><SkeletonCard/><SkeletonCard/>
-          </>
-        ) : (
-          <>
-            <StatCard title="Total Carbon Reduced" value={`${(act?.carbon_total_all ?? 0).toFixed(2)} kg CO₂e`} icon={<span>🌍</span>} accent="emerald"/>
-            <StatCard title="Carbon (This Month)" value={`${(act?.carbon_total_month ?? 0).toFixed(2)} kg CO₂e`} icon={<span>📆</span>} accent="cyan"/>
-            <StatCard title="Total Distance (All)" value={`${(act?.total_km_all ?? 0).toFixed(1)} km`} icon={<span>🛣️</span>} accent="blue"/>
-            <StatCard title="Distance (This Month)" value={`${(act?.total_km_month ?? 0).toFixed(1)} km`} icon={<span>📅</span>} accent="violet"/>
-          </>
-        )}
-      </div>
-
-      {/* ===== Goals & Pace ===== */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading ? (
-          <>
-            <SkeletonCard/><SkeletonCard/><SkeletonCard/><SkeletonCard/>
-          </>
-        ) : (
-          <>
-            <StatCard title="Avg Walk / Activity" value={`${(act?.walk_avg_km ?? 0).toFixed(2)} km`} icon={<span>🚶</span>} accent="amber" hint="per activity"/>
-            <StatCard title="Avg Bike / Activity"  value={`${(act?.bike_avg_km ?? 0).toFixed(2)} km`} icon={<span>🚴</span>} accent="amber" hint="per activity"/>
-            <StatCard title="Avg Walk Pace" value={`${(act?.walk_avg_pace_kmh ?? 0).toFixed(2)} km/h`} icon={<span>⏱️</span>} accent="cyan"/>
-            <StatCard title="Avg Bike Pace" value={`${(act?.bike_avg_pace_kmh ?? 0).toFixed(2)} km/h`} icon={<span>⚡</span>} accent="cyan"/>
-          </>
-        )}
-      </div>
-
-      {/* ===== User Growth & Mix ===== */}
+      {/* ===== Growth & Mix ===== */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <Section title="User Growth (Last 12 months)">
           <div className="h-72">
@@ -363,6 +346,37 @@ export default function Dashboard() {
           </div>
         </Section>
       </div>
+
+      {/* ===== Carbon KPIs (with time filter) ===== */}
+      <Section
+        title="Carbon KPIs"
+        subtitle="Filter period for both metrics"
+        right={
+          <WindowPicker
+            value={agWindow}
+            onChange={setAgWindow}
+            from={agFrom}
+            to={agTo}
+            onFrom={setAgFrom}
+            onTo={setAgTo}
+          />
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
+          <StatCard
+            title="Carbon Reduce"
+            value={`${aggregates.carbon_reduced.toFixed(2)} kg CO₂e`}
+            icon={<span>🌍</span>}
+            accent="emerald"
+          />
+          <StatCard
+            title="Carbon (Emitted)"
+            value={`${aggregates.carbon_emitted.toFixed(2)} kg CO₂e`}
+            icon={<span>🔥</span>}
+            accent="rose"
+          />
+        </div>
+      </Section>
 
       {/* ===== Activity Charts (with filters) ===== */}
       <Section
@@ -483,7 +497,7 @@ export default function Dashboard() {
         </div>
       </Section>
 
-      {/* ===== Recent Activities (NEW) ===== */}
+      {/* ===== Recent Activities ===== */}
       <Section
         title="Recent Activities"
         subtitle="Latest walk & bike records site-wide"
@@ -540,10 +554,9 @@ export default function Dashboard() {
       </Section>
 
       <div className="text-xs text-slate-400">
-        Tips: ใช้ตัวกรองของแต่ละ Section แยกกันได้ (Charts / Leaderboard / Recent)
+        Tips: ฟิลเตอร์ของแต่ละ Section แยกกัน (Carbon KPIs / Charts / Leaderboard / Recent)
       </div>
 
-      {/* optional explorer เดิม */}
       <ActivityExplorer />
     </div>
   );
