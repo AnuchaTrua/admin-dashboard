@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
 
 /* ---------- Types ---------- */
@@ -8,7 +8,7 @@ export type Reward = {
   description: string;
   image_url: string | null;
   cost_points: number;
-  expires_at: string | null; // MySQL DATETIME string 'YYYY-MM-DD HH:MM:SS' or null
+  expires_at: string | null; // 'YYYY-MM-DD HH:MM:SS' or null
   active: 0 | 1;
   stock: number;
   created_at?: string;
@@ -19,7 +19,6 @@ type ApiList<T> = { success?: boolean; data?: T } | T;
 
 /* ---------- Helpers ---------- */
 const toMySQLDateTime = (val: string | null): string | null => {
-  // takes input from <input type="datetime-local"> (YYYY-MM-DDTHH:mm) -> 'YYYY-MM-DD HH:mm:00'
   if (!val) return null;
   const [d, t] = val.split("T");
   if (!d || !t) return null;
@@ -27,7 +26,6 @@ const toMySQLDateTime = (val: string | null): string | null => {
 };
 
 const toLocalInputValue = (mysqlDT?: string | null): string => {
-  // 'YYYY-MM-DD HH:mm:ss' -> 'YYYY-MM-DDTHH:mm'
   if (!mysqlDT) return "";
   const [d, t] = mysqlDT.split(" ");
   if (!d || !t) return "";
@@ -45,7 +43,7 @@ const StatusBadge = ({ active }: { active: 0 | 1 }) => (
   </span>
 );
 
-/* ---------- Create / Edit Modal ---------- */
+/* ---------- Create / Edit Modal (with S3 upload) ---------- */
 function RewardFormModal({
   open,
   onClose,
@@ -59,34 +57,69 @@ function RewardFormModal({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [costPoints, setCostPoints] = useState<number | "">("");
   const [stock, setStock] = useState<number | "">("");
   const [active, setActive] = useState<0 | 1>(1);
   const [expiresAtInput, setExpiresAtInput] = useState("");
+
+  // image state
+  const [imageUrl, setImageUrl] = useState<string>(""); // สำหรับกรณีแก้ไข (ใช้รูปเดิม)
+  const [fileObj, setFileObj] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string>("");   // preview local
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     if (initial) {
       setTitle(initial.title ?? "");
       setDescription(initial.description ?? "");
-      setImageUrl(initial.image_url ?? "");
       setCostPoints(Number.isFinite(initial.cost_points) ? initial.cost_points : "");
       setStock(Number.isFinite(initial.stock) ? initial.stock : "");
       setActive(initial.active ?? 1);
       setExpiresAtInput(toLocalInputValue(initial.expires_at));
+      setImageUrl(initial.image_url ?? "");
+      setFileObj(null);
+      setPreview(initial.image_url ?? "");
     } else {
       setTitle("");
       setDescription("");
-      setImageUrl("");
       setCostPoints("");
       setStock("");
       setActive(1);
       setExpiresAtInput("");
+      setImageUrl("");
+      setFileObj(null);
+      setPreview("");
     }
   }, [open, initial]);
 
   if (!open) return null;
+
+  const handlePickFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] || null;
+    setFileObj(f);
+    if (f) {
+      const url = URL.createObjectURL(f);
+      setPreview(url);
+    } else {
+      setPreview(imageUrl || "");
+    }
+  };
+
+  const uploadToS3 = async (file: File): Promise<string> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await api.post("/admin/rewards/upload", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    const url = res?.data?.url as string;
+    if (!url) throw new Error("Upload failed");
+    return url;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,10 +127,23 @@ function RewardFormModal({
     if (costPoints === "" || Number(costPoints) < 0) return alert("กรอกแต้มให้ถูกต้อง");
     if (stock === "" || Number(stock) < 0) return alert("กรอกสต็อกให้ถูกต้อง");
 
+    let finalImageUrl = imageUrl || null;
+
+    // ถ้าเลือกไฟล์ใหม่ → อัปโหลด S3 → ใช้ URL ใหม่
+    if (fileObj) {
+      try {
+        finalImageUrl = await uploadToS3(fileObj);
+      } catch (err) {
+        console.error("upload error:", err);
+        alert("อัปโหลดรูปไม่สำเร็จ");
+        return;
+      }
+    }
+
     await onSubmit({
       title: title.trim().slice(0, 120),
       description,
-      image_url: imageUrl.trim() ? imageUrl.trim() : null,
+      image_url: finalImageUrl,
       cost_points: Number(costPoints),
       stock: Number(stock),
       active,
@@ -130,6 +176,7 @@ function RewardFormModal({
                 required
               />
             </div>
+
             <div>
               <label className="mb-1 block text-sm text-gray-600">แต้มที่ใช้แลก</label>
               <input
@@ -141,6 +188,7 @@ function RewardFormModal({
                 required
               />
             </div>
+
             <div>
               <label className="mb-1 block text-sm text-gray-600">สต็อก</label>
               <input
@@ -152,6 +200,7 @@ function RewardFormModal({
                 required
               />
             </div>
+
             <div>
               <label className="mb-1 block text-sm text-gray-600">วันหมดอายุ</label>
               <input
@@ -161,16 +210,53 @@ function RewardFormModal({
                 onChange={(e) => setExpiresAtInput(e.target.value)}
               />
             </div>
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">รูปภาพ (URL)</label>
+
+            {/* รูปภาพ: เลือกไฟล์ + Preview + อัปโหลด S3 */}
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm text-gray-600">รูปภาพ (อัปโหลดขึ้น S3)</label>
+              <div className="flex items-center gap-4">
+                <div className="h-20 w-20 overflow-hidden rounded border bg-gray-50">
+                  {preview ? (
+                    <img src={preview} alt="preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
+                      no image
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePickFile}
+                    className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    เลือกรูปจากเครื่อง…
+                  </button>
+                  {imageUrl && !fileObj && (
+                    <span className="text-xs text-gray-500">
+                      ใช้รูปเดิมอยู่ (จะแทนที่เมื่อเลือกรูปใหม่)
+                    </span>
+                  )}
+                </div>
+              </div>
               <input
-                className="w-full rounded border px-3 py-2"
-                placeholder="https://…"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                maxLength={255}
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
               />
             </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm text-gray-600">รายละเอียด</label>
+              <textarea
+                className="h-28 w-full resize-y rounded border px-3 py-2"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+
             <div>
               <label className="mb-1 block text-sm text-gray-600">สถานะ</label>
               <select
@@ -182,15 +268,6 @@ function RewardFormModal({
                 <option value={0}>Inactive</option>
               </select>
             </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm text-gray-600">รายละเอียด</label>
-            <textarea
-              className="h-28 w-full resize-y rounded border px-3 py-2"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
@@ -265,7 +342,7 @@ export default function PointManagement() {
     try {
       setLoading(true);
       const res = await api.get("/admin/rewards");
-      const data = (res.data as ApiList<Reward[]>);
+      const data = res.data as ApiList<Reward[]>;
       const rows = Array.isArray(data) ? data : data?.data || [];
       setList(rows);
     } catch (err) {
