@@ -1,3 +1,4 @@
+// src/frontend/pages/BlogManagement.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../services/api';
 import ReactQuill from 'react-quill-new';
@@ -22,24 +23,21 @@ export default function BlogManagement() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Blog | null>(null);
   const [title, setTitle] = useState('');
-  const [authorId, setAuthorId] = useState<number | ''>('');
   const [cover, setCover] = useState<File | null>(null);
   const [content, setContent] = useState('');
 
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
   const [saving, setSaving] = useState(false);
 
   const quillRef = useRef<ReactQuill | null>(null);
 
   const loadMe = async () => {
     try {
-      // 👇 เปลี่ยนเป็น /api/admin/me (มีในไฟล์ admin.js ข้างบน)
       const res = await api.get('/admin/me');
-      const me: Me = res.data?.data || res.data;
-      setCurrentUserId(me?.user_id ?? null);
-      setAuthorId(me?.user_id ?? '');
+      const _me: Me = res.data?.data || res.data;
+      setMe(_me ?? null);
     } catch {
-      setCurrentUserId(null);
+      setMe(null);
     }
   };
 
@@ -68,7 +66,6 @@ export default function BlogManagement() {
     setTitle('');
     setCover(null);
     setContent('');
-    setAuthorId(currentUserId ?? '');
   };
 
   const openNew = () => { resetForm(); setOpen(true); };
@@ -77,7 +74,6 @@ export default function BlogManagement() {
     setTitle(b.title);
     setCover(null);
     setContent(b.content || '');
-    setAuthorId(b.author_id);
     setOpen(true);
   };
   const closeModal = () => { setOpen(false); resetForm(); };
@@ -131,17 +127,19 @@ export default function BlogManagement() {
     e.preventDefault();
     if (!title.trim()) return alert('กรุณากรอกชื่อเรื่อง');
     if (htmlIsEmpty(content)) return alert('กรุณาใส่เนื้อหา');
-    if (authorId === '' || !Number.isFinite(Number(authorId))) return alert('กรุณาระบุ Author ID ให้ถูกต้อง');
+    if (!me?.user_id) return alert('ไม่พบผู้ใช้ที่ล็อกอินอยู่ (author) — โปรดล็อกอินใหม่');
 
     try {
       setSaving(true);
       const form = new FormData();
       form.append('title', title);
       form.append('content', content);
-      form.append('author_id', String(authorId));
+      // ✅ ใช้ author_id = admin ที่ล็อกอินอยู่เสมอ
+      form.append('author_id', String(me.user_id));
       if (cover) form.append('cover', cover);
 
       if (editing) {
+        // NOTE: อัปเดตก็ผูก author ให้เป็นแอดมินที่แก้ไข ณ ตอนนี้ตาม requirement
         await api.put(`/admin/blogs/${editing.id}`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
         await api.post('/admin/blogs', form, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -174,7 +172,7 @@ export default function BlogManagement() {
         <h1 className="text-2xl font-bold">Blog Management</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-600">
-            {currentUserId ? `Logged in as #${currentUserId}` : 'Not logged in'}
+            {me?.user_id ? `Logged in as ${me.name || me.email || '#'+me.user_id} (id: ${me.user_id})` : 'Not logged in'}
           </span>
           <button onClick={openNew} className="px-4 py-2 bg-blue-600 text-white rounded">
             New Blog
@@ -203,7 +201,7 @@ export default function BlogManagement() {
                 <tr key={b.id} className="border-t">
                   <td className="p-2">{b.id}</td>
                   <td className="p-2">{b.title}</td>
-                  <td className="p-2">{b.author_name || b.author_id}</td>
+                  <td className="p-2">{b.author_name || `#${b.author_id}`}</td>
                   <td className="p-2">{b.create_at ? new Date(b.create_at).toLocaleDateString() : '-'}</td>
                   <td className="p-2">{b.update_at ? new Date(b.update_at).toLocaleDateString() : '-'}</td>
                   <td className="p-2">
@@ -234,7 +232,7 @@ export default function BlogManagement() {
             </div>
 
             <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-sm">Title</label>
                   <input
@@ -245,16 +243,18 @@ export default function BlogManagement() {
                   />
                 </div>
 
+                {/* ✅ แสดง Author แบบอ่านอย่างเดียว (ไม่แก้ไข) */}
                 <div>
-                  <label className="block text-sm">Author ID</label>
+                  <label className="block text-sm">Author</label>
                   <input
-                    type="number"
-                    value={authorId}
-                    onChange={(e) => setAuthorId(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full border px-3 py-2 rounded"
-                    required
-                    min={1}
-                    placeholder="ใส่หมายเลขผู้เขียน"
+                    value={
+                      me?.user_id
+                        ? `${me?.name || me?.email || ''} (id: ${me.user_id})`
+                        : 'Not logged in'
+                    }
+                    className="w-full border px-3 py-2 rounded bg-gray-50 text-gray-600"
+                    disabled
+                    readOnly
                   />
                 </div>
               </div>
@@ -283,7 +283,11 @@ export default function BlogManagement() {
 
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={closeModal} className="px-4 py-2 rounded border">ยกเลิก</button>
-                <button type="submit" className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving}>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+                  disabled={saving}
+                >
                   {saving ? 'กำลังบันทึก…' : editing ? 'บันทึกการแก้ไข' : 'สร้างบทความ'}
                 </button>
               </div>
