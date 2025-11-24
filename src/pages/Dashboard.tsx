@@ -53,8 +53,8 @@ type RecentRow = {
 };
 type Aggregates = { carbon_reduced: number; carbon_emitted: number };
 
-/** ✅ WindowKey กลางให้ทั้งหน้าใช้ร่วมกัน */
-type WindowKey = '7d' | '30d' | '90d' | 'this_week' | 'this_month' | 'custom';
+/** ✅ Shared window key for all time filters */
+type WindowKey = 'all' | '7d' | '30d' | '90d' | 'this_week' | 'this_month' | 'custom';
 
 /** ================= Small UI Helpers ================= */
 const Section = ({ title, subtitle, right, children }:{
@@ -119,14 +119,14 @@ const TinySpark = ({ data }:{ data:{x:string|number;y:number}[] }) => (
   </ResponsiveContainer>
 );
 
-/** ✅ makeTimeParams รับ WindowKey ได้ */
+/** ✅ makeTimeParams now supports 'all' as default */
 function makeTimeParams(windowStr: WindowKey, from?: string, to?: string) {
   const params: any = {};
   if (windowStr === 'custom') {
     if (from) params.from = from;
     if (to) params.to = to;
   } else {
-    params.window = windowStr;
+    params.window = windowStr; // includes 'all'
   }
   return params;
 }
@@ -138,24 +138,24 @@ export default function Dashboard() {
 
   // ===== Charts filters =====
   const [chartType, setChartType] = useState<'walk'|'bike'>('walk');
-  const [chartWindow, setChartWindow] = useState<WindowKey>('30d');
+  const [chartWindow, setChartWindow] = useState<WindowKey>('all');
   const [chartFrom, setChartFrom] = useState<string>('');
   const [chartTo, setChartTo] = useState<string>('');
 
   // ===== Leaderboard filters =====
-  const [lbWindow, setLbWindow] = useState<WindowKey>('30d');
+  const [lbWindow, setLbWindow] = useState<WindowKey>('all');
   const [lbMetric, setLbMetric] = useState<'carbon'|'distance'>('carbon');
   const [lbFrom, setLbFrom] = useState<string>('');
   const [lbTo, setLbTo] = useState<string>('');
 
   // ===== Recent activities filters =====
-  const [rcWindow, setRcWindow] = useState<WindowKey>('7d');
+  const [rcWindow, setRcWindow] = useState<WindowKey>('all');
   const [rcFrom, setRcFrom] = useState<string>('');
   const [rcTo, setRcTo] = useState<string>('');
   const [rcLimit, setRcLimit] = useState<number>(50);
 
   // ===== Carbon KPIs filters =====
-  const [agWindow, setAgWindow] = useState<WindowKey>('30d');
+  const [agWindow, setAgWindow] = useState<WindowKey>('all');
   const [agFrom, setAgFrom] = useState<string>('');
   const [agTo, setAgTo] = useState<string>('');
   const [aggregates, setAggregates] = useState<Aggregates>({ carbon_reduced: 0, carbon_emitted: 0 });
@@ -238,7 +238,7 @@ export default function Dashboard() {
   const monthlyData = summary?.monthly_signups ?? [];
   const sparkData = monthlyData.map(d => ({ x: d.month, y: d.users }));
 
-  /** ✅ ปรับ WindowPicker ให้ใช้ WindowKey */
+  /** ✅ Time window selector with "All time" as default option */
   const WindowPicker = ({
     value, onChange, from, to, onFrom, onTo
   }:{
@@ -251,18 +251,29 @@ export default function Dashboard() {
         value={value}
         onChange={e => onChange(e.target.value as WindowKey)}
       >
-        <option value="7d">Last 7d</option>
-        <option value="30d">Last 30d</option>
-        <option value="90d">Last 90d</option>
-        <option value="this_week">This Week</option>
-        <option value="this_month">This Month</option>
-        <option value="custom">Custom Range</option>
+        <option value="all">All time</option>
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="90d">Last 90 days</option>
+        <option value="this_week">This week</option>
+        <option value="this_month">This month</option>
+        <option value="custom">Custom range</option>
       </select>
       {value === 'custom' && (
         <>
-          <input type="date" className="px-2 py-1 rounded-lg text-sm bg-white border" value={from} onChange={e=>onFrom(e.target.value)} />
+          <input
+            type="date"
+            className="px-2 py-1 rounded-lg text-sm bg-white border"
+            value={from}
+            onChange={e=>onFrom(e.target.value)}
+          />
           <span className="text-slate-400">to</span>
-          <input type="date" className="px-2 py-1 rounded-lg text-sm bg-white border" value={to} onChange={e=>onTo(e.target.value)} />
+          <input
+            type="date"
+            className="px-2 py-1 rounded-lg text-sm bg-white border"
+            value={to}
+            onChange={e=>onTo(e.target.value)}
+          />
         </>
       )}
     </div>
@@ -274,7 +285,9 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
-          <p className="text-slate-500 text-sm">Overview, usage insights, and carbon reduction</p>
+          <p className="text-slate-500 text-sm">
+            Overview, usage insights, and carbon reduction from walking & cycling
+          </p>
         </div>
       </div>
 
@@ -290,14 +303,44 @@ export default function Dashboard() {
         {loading && Array.from({length:6}).map((_,i)=><SkeletonCard key={i}/>)}
         {!loading && (
           <>
-            <StatCard title="Total Users"   value={ov?.total_users ?? 0} icon={<span>👥</span>} accent="blue"/>
-            <StatCard title="Active Users"  value={ov?.active_users ?? 0} icon={<span>✅</span>} accent="emerald"/>
-            <StatCard title="Blocked Users" value={ov?.blocked_users ?? 0} icon={<span>⛔</span>} accent="rose"/>
-            <StatCard title="Admins"        value={ov?.admins ?? 0} icon={<span>🛡️</span>} accent="violet"/>
-            <StatCard title="New (7d)"      value={ov?.new_7d ?? 0} icon={<span>✨</span>} accent="amber"/>
+            <StatCard
+              title="Total users"
+              value={ov?.total_users ?? 0}
+              icon={<span>👥</span>}
+              accent="blue"
+              hint="All registered accounts"
+            />
+            <StatCard
+              title="Active users"
+              value={ov?.active_users ?? 0}
+              icon={<span>✅</span>}
+              accent="emerald"
+              hint="Status = active"
+            />
+            <StatCard
+              title="Blocked users"
+              value={ov?.blocked_users ?? 0}
+              icon={<span>⛔</span>}
+              accent="rose"
+              hint="Status = blocked"
+            />
+            <StatCard
+              title="Admins"
+              value={ov?.admins ?? 0}
+              icon={<span>🛡️</span>}
+              accent="violet"
+              hint="Users with admin role"
+            />
+            <StatCard
+              title="New users (7 days)"
+              value={ov?.new_7d ?? 0}
+              icon={<span>✨</span>}
+              accent="amber"
+              hint="Accounts created in the last 7 days"
+            />
             <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-              <div className="text-xs uppercase tracking-wide text-slate-500">Growth Spark</div>
-              <div className="text-xs text-slate-400 mt-1">Signups (12m)</div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Growth spark</div>
+              <div className="text-xs text-slate-400 mt-1">User signups (last 12 months)</div>
               <div className="mt-2"><TinySpark data={sparkData}/></div>
             </div>
           </>
@@ -306,7 +349,10 @@ export default function Dashboard() {
 
       {/* ===== Growth & Mix ===== */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Section title="User Growth (Last 12 months)">
+        <Section
+          title="User growth"
+          subtitle="New accounts per month (last 12 months)"
+        >
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthlyData}>
@@ -320,10 +366,13 @@ export default function Dashboard() {
           </div>
         </Section>
 
-        <Section title="User Mix">
+        <Section
+          title="User mix"
+          subtitle="Account status and roles"
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="h-64">
-              <div className="text-sm text-slate-600 mb-2">Status Breakdown</div>
+              <div className="text-sm text-slate-600 mb-2">Status breakdown</div>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={statusPie} dataKey="value" nameKey="name" outerRadius={90} label>
@@ -335,7 +384,7 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
             <div className="h-64">
-              <div className="text-sm text-slate-600 mb-2">Role Breakdown</div>
+              <div className="text-sm text-slate-600 mb-2">Role breakdown</div>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={summary?.role_breakdown ?? []} dataKey="count" nameKey="role" outerRadius={90} label>
@@ -353,7 +402,7 @@ export default function Dashboard() {
       {/* ===== Carbon KPIs (with time filter) ===== */}
       <Section
         title="Carbon KPIs"
-        subtitle="Filter period for both metrics"
+        subtitle="Total carbon reduction and estimated emissions for the selected period"
         right={
           <WindowPicker
             value={agWindow}
@@ -367,28 +416,30 @@ export default function Dashboard() {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4">
           <StatCard
-            title="Carbon Reduce"
+            title="Carbon reduced"
             value={`${aggregates.carbon_reduced.toFixed(2)} kg CO₂e`}
             icon={<span>🌍</span>}
             accent="emerald"
+            hint="From walking & cycling activities"
           />
           <StatCard
-            title="Carbon (Emitted)"
+            title="Carbon (emitted baseline)"
             value={`${aggregates.carbon_emitted.toFixed(2)} kg CO₂e`}
             icon={<span>🔥</span>}
             accent="rose"
+            hint="Baseline emissions if the trip used a vehicle"
           />
         </div>
       </Section>
 
       {/* ===== Activity Charts (with filters) ===== */}
       <Section
-        title={`Activity Charts — ${chartType === 'walk' ? 'Walk' : 'Bike'}`}
-        subtitle="By Hour • By Weekday • Distance Histogram"
+        title={`Activity patterns — ${chartType === 'walk' ? 'Walking' : 'Cycling'}`}
+        subtitle="Distribution of activities by hour of day, day of week, and distance"
         right={
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-2 bg-white border rounded-xl px-2 py-1">
-              <span className="text-xs text-slate-500">Type</span>
+              <span className="text-xs text-slate-500">Activity type</span>
               <button
                 className={`px-3 py-1 rounded-lg text-sm ${chartType==='walk'?'bg-slate-900 text-white':'text-slate-700 hover:bg-slate-100'}`}
                 onClick={()=>setChartType('walk')}
@@ -411,7 +462,7 @@ export default function Dashboard() {
       >
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="h-72">
-            <div className="mb-2 text-sm text-slate-600">By Hour</div>
+            <div className="mb-2 text-sm text-slate-600">By hour of day</div>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hourly}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -423,7 +474,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
           <div className="h-72">
-            <div className="mb-2 text-sm text-slate-600">By Weekday</div>
+            <div className="mb-2 text-sm text-slate-600">By weekday</div>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weekday.map(r=>({ name: dowToName(r.dow), count: r.count }))}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -435,7 +486,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
           <div className="h-72">
-            <div className="mb-2 text-sm text-slate-600">Distance Histogram</div>
+            <div className="mb-2 text-sm text-slate-600">Distance histogram</div>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hist}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -451,8 +502,8 @@ export default function Dashboard() {
 
       {/* ===== Leaderboard ===== */}
       <Section
-        title={lbMetric === 'carbon' ? 'Carbon Reduction Leaderboard' : 'Distance Leaderboard'}
-        subtitle="Top users — Walk + Bike combined"
+        title={lbMetric === 'carbon' ? 'Carbon reduction leaderboard' : 'Distance leaderboard'}
+        subtitle="Top users by total carbon saved or total distance"
         right={
           <div className="flex items-center gap-2">
             <select
@@ -480,7 +531,9 @@ export default function Dashboard() {
               <tr className="bg-slate-50 text-slate-600">
                 <th className="p-2 text-left">#</th>
                 <th className="p-2 text-left">User</th>
-                <th className="p-2 text-right">{lbMetric === 'carbon' ? 'Carbon (kg)' : 'Distance (km)'}</th>
+                <th className="p-2 text-right">
+                  {lbMetric === 'carbon' ? 'Carbon (kg CO₂e)' : 'Distance (km)'}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -502,8 +555,8 @@ export default function Dashboard() {
 
       {/* ===== Recent Activities ===== */}
       <Section
-        title="Recent Activities"
-        subtitle="Latest walk & bike records site-wide"
+        title="Recent activities"
+        subtitle="Latest walk & bike records across the platform"
         right={
           <div className="flex items-center gap-2">
             <WindowPicker
@@ -534,7 +587,7 @@ export default function Dashboard() {
                 <th className="p-2 text-left">User</th>
                 <th className="p-2 text-left">Type</th>
                 <th className="p-2 text-right">Distance (km)</th>
-                <th className="p-2 text-right">Carbon (kg)</th>
+                <th className="p-2 text-right">Carbon (kg CO₂e)</th>
                 <th className="p-2 text-right">Pace (km/h)</th>
               </tr>
             </thead>
@@ -557,7 +610,7 @@ export default function Dashboard() {
       </Section>
 
       <div className="text-xs text-slate-400">
-        Tips: ฟิลเตอร์ของแต่ละ Section แยกกัน (Carbon KPIs / Charts / Leaderboard / Recent)
+        Tip: Each section has its own time filter (Carbon KPIs / Activity charts / Leaderboard / Recent activities).
       </div>
 
       <ActivityExplorer />
