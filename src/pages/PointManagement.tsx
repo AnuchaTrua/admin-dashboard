@@ -8,6 +8,7 @@ export type Reward = {
   description: string;
   image_url: string | null;
   cost_points: number;
+  start_at: string | null;   // ✅ NEW: start date-time
   expires_at: string | null; // 'YYYY-MM-DD HH:MM:SS' or null
   active: 0 | 1;
   stock: number;
@@ -60,12 +61,13 @@ function RewardFormModal({
   const [costPoints, setCostPoints] = useState<number | "">("");
   const [stock, setStock] = useState<number | "">("");
   const [active, setActive] = useState<0 | 1>(1);
+  const [startAtInput, setStartAtInput] = useState("");   // ✅ NEW state
   const [expiresAtInput, setExpiresAtInput] = useState("");
 
   // image state
-  const [imageUrl, setImageUrl] = useState<string>(""); // สำหรับกรณีแก้ไข (ใช้รูปเดิม)
+  const [imageUrl, setImageUrl] = useState<string>(""); // for existing image
   const [fileObj, setFileObj] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string>("");   // preview local
+  const [preview, setPreview] = useState<string>("");   // local preview
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ function RewardFormModal({
       setCostPoints(Number.isFinite(initial.cost_points) ? initial.cost_points : "");
       setStock(Number.isFinite(initial.stock) ? initial.stock : "");
       setActive(initial.active ?? 1);
+      setStartAtInput(toLocalInputValue(initial.start_at));
       setExpiresAtInput(toLocalInputValue(initial.expires_at));
       setImageUrl(initial.image_url ?? "");
       setFileObj(null);
@@ -86,6 +89,7 @@ function RewardFormModal({
       setCostPoints("");
       setStock("");
       setActive(1);
+      setStartAtInput("");
       setExpiresAtInput("");
       setImageUrl("");
       setFileObj(null);
@@ -123,19 +127,21 @@ function RewardFormModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return alert("กรอกชื่อของรางวัลก่อนนะ");
-    if (costPoints === "" || Number(costPoints) < 0) return alert("กรอกแต้มให้ถูกต้อง");
-    if (stock === "" || Number(stock) < 0) return alert("กรอกสต็อกให้ถูกต้อง");
+    if (!title.trim()) return alert("Please enter reward name.");
+    if (costPoints === "" || Number(costPoints) < 0)
+      return alert("Please enter a valid point cost.");
+    if (stock === "" || Number(stock) < 0)
+      return alert("Please enter a valid stock quantity.");
 
     let finalImageUrl = imageUrl || null;
 
-    // ถ้าเลือกไฟล์ใหม่ → อัปโหลด S3 → ใช้ URL ใหม่
+    // If new file selected → upload to S3 → use new URL
     if (fileObj) {
       try {
         finalImageUrl = await uploadToS3(fileObj);
       } catch (err) {
         console.error("upload error:", err);
-        alert("อัปโหลดรูปไม่สำเร็จ");
+        alert("Image upload failed.");
         return;
       }
     }
@@ -147,7 +153,8 @@ function RewardFormModal({
       cost_points: Number(costPoints),
       stock: Number(stock),
       active,
-      expires_at: toMySQLDateTime(expiresAtInput),
+      start_at: toMySQLDateTime(startAtInput),     // ✅ send start_at
+      expires_at: toMySQLDateTime(expiresAtInput), // ✅ send expires_at
     });
     onClose();
   };
@@ -157,7 +164,7 @@ function RewardFormModal({
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-lg">
         <div className="flex items-center justify-between border-b px-6 py-3">
           <h3 className="text-lg font-semibold">
-            {initial ? "แก้ไขของรางวัล" : "สร้างของรางวัลใหม่"}
+            {initial ? "Edit Reward" : "Create New Reward"}
           </h3>
           <button onClick={onClose} className="rounded px-2 py-1 text-sm hover:bg-gray-100">
             ✕
@@ -167,7 +174,9 @@ function RewardFormModal({
         <form onSubmit={handleSubmit} className="space-y-4 p-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-gray-600">ชื่อ (สูงสุด 120)</label>
+              <label className="mb-1 block text-sm text-gray-600">
+                Reward name (max 120)
+              </label>
               <input
                 className="w-full rounded border px-3 py-2"
                 value={title}
@@ -178,31 +187,49 @@ function RewardFormModal({
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-gray-600">แต้มที่ใช้แลก</label>
+              <label className="mb-1 block text-sm text-gray-600">Point cost</label>
               <input
                 type="number"
                 min={0}
                 className="w-full rounded border px-3 py-2"
                 value={costPoints}
-                onChange={(e) => setCostPoints(e.target.value === "" ? "" : Number(e.target.value))}
+                onChange={(e) =>
+                  setCostPoints(e.target.value === "" ? "" : Number(e.target.value))
+                }
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-gray-600">สต็อก</label>
+              <label className="mb-1 block text-sm text-gray-600">Stock</label>
               <input
                 type="number"
                 min={0}
                 className="w-full rounded border px-3 py-2"
                 value={stock}
-                onChange={(e) => setStock(e.target.value === "" ? "" : Number(e.target.value))}
+                onChange={(e) =>
+                  setStock(e.target.value === "" ? "" : Number(e.target.value))
+                }
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-gray-600">วันหมดอายุ</label>
+              <label className="mb-1 block text-sm text-gray-600">
+                Start date &amp; time
+              </label>
+              <input
+                type="datetime-local"
+                className="w-full rounded border px-3 py-2"
+                value={startAtInput}
+                onChange={(e) => setStartAtInput(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm text-gray-600">
+                Expire date &amp; time
+              </label>
               <input
                 type="datetime-local"
                 className="w-full rounded border px-3 py-2"
@@ -211,9 +238,11 @@ function RewardFormModal({
               />
             </div>
 
-            {/* รูปภาพ: เลือกไฟล์ + Preview + อัปโหลด S3 */}
+            {/* Image: picker + preview + upload to S3 */}
             <div className="md:col-span-2">
-              <label className="mb-1 block text-sm text-gray-600">รูปภาพ (อัปโหลดขึ้น S3)</label>
+              <label className="mb-1 block text-sm text-gray-600">
+                Image (uploaded to S3)
+              </label>
               <div className="flex items-center gap-4">
                 <div className="h-20 w-20 overflow-hidden rounded border bg-gray-50">
                   {preview ? (
@@ -230,11 +259,12 @@ function RewardFormModal({
                     onClick={handlePickFile}
                     className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
                   >
-                    เลือกรูปจากเครื่อง…
+                    Choose image…
                   </button>
                   {imageUrl && !fileObj && (
                     <span className="text-xs text-gray-500">
-                      ใช้รูปเดิมอยู่ (จะแทนที่เมื่อเลือกรูปใหม่)
+                      Currently using existing image (will be replaced when you choose
+                      a new one).
                     </span>
                   )}
                 </div>
@@ -249,7 +279,7 @@ function RewardFormModal({
             </div>
 
             <div className="md:col-span-2">
-              <label className="mb-1 block text-sm text-gray-600">รายละเอียด</label>
+              <label className="mb-1 block text-sm text-gray-600">Description</label>
               <textarea
                 className="h-28 w-full resize-y rounded border px-3 py-2"
                 value={description}
@@ -258,7 +288,7 @@ function RewardFormModal({
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-gray-600">สถานะ</label>
+              <label className="mb-1 block text-sm text-gray-600">Status</label>
               <select
                 className="w-full rounded border px-3 py-2"
                 value={active}
@@ -271,11 +301,18 @@ function RewardFormModal({
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="rounded border px-4 py-2">
-              ยกเลิก
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border px-4 py-2"
+            >
+              Cancel
             </button>
-            <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-white">
-              บันทึก
+            <button
+              type="submit"
+              className="rounded bg-blue-600 px-4 py-2 text-white"
+            >
+              Save
             </button>
           </div>
         </form>
@@ -308,10 +345,13 @@ function ConfirmDialog({
         <div className="px-6 py-4 text-sm text-gray-700">{message}</div>
         <div className="flex justify-end gap-3 px-6 pb-5">
           <button className="rounded border px-4 py-2" onClick={onCancel}>
-            ยกเลิก
+            Cancel
           </button>
-          <button className="rounded bg-red-600 px-4 py-2 text-white" onClick={onConfirm}>
-            ยืนยัน
+          <button
+            className="rounded bg-red-600 px-4 py-2 text-white"
+            onClick={onConfirm}
+          >
+            Confirm
           </button>
         </div>
       </div>
@@ -385,12 +425,14 @@ export default function PointManagement() {
       <div className="mb-4 flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
         <div>
           <h1 className="text-2xl font-bold">Reward Management</h1>
-          <p className="text-sm text-gray-500">จัดการของรางวัลสำหรับระบบสะสมแต้ม</p>
+          <p className="text-sm text-gray-500">
+            Manage rewards for the carbon point system.
+          </p>
         </div>
         <div className="flex w-full items-center gap-3 md:w-auto">
           <input
             className="w-full rounded border px-3 py-2 md:w-64"
-            placeholder="ค้นหาของรางวัล…"
+            placeholder="Search rewards…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -416,6 +458,7 @@ export default function PointManagement() {
                 <th className="p-3">Reward</th>
                 <th className="p-3">Cost</th>
                 <th className="p-3">Stock</th>
+                <th className="p-3">Start</th>   {/* ✅ new column */}
                 <th className="p-3">Expires</th>
                 <th className="p-3">Status</th>
                 <th className="p-3 text-right">Actions</th>
@@ -450,6 +493,7 @@ export default function PointManagement() {
                   </td>
                   <td className="p-3">{r.cost_points.toLocaleString()}</td>
                   <td className="p-3">{r.stock}</td>
+                  <td className="p-3">{r.start_at ?? "-"}</td>
                   <td className="p-3">{r.expires_at ?? "-"}</td>
                   <td className="p-3">
                     <StatusBadge active={r.active} />
@@ -482,16 +526,16 @@ export default function PointManagement() {
                   </td>
                 </tr>
               ))}
-              {(!loading && filtered.length === 0) && (
+              {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-gray-500">
-                    ไม่พบของรางวัล
+                  <td colSpan={8} className="p-6 text-center text-gray-500">
+                    No rewards found.
                   </td>
                 </tr>
               )}
               {loading && (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-gray-500">
+                  <td colSpan={8} className="p-6 text-center text-gray-500">
                     Loading…
                   </td>
                 </tr>
@@ -513,8 +557,10 @@ export default function PointManagement() {
       />
       <ConfirmDialog
         open={!!openDelete}
-        title="ลบของรางวัล"
-        message={`ต้องการลบ "${openDelete?.title ?? ""}" จริงหรือไม่?`}
+        title="Delete reward"
+        message={`Are you sure you want to delete "${
+          openDelete?.title ?? ""
+        }"?`}
         onCancel={() => setOpenDelete(null)}
         onConfirm={handleDelete}
       />

@@ -559,6 +559,7 @@ export default function Dashboard() {
         subtitle="Latest walk & bike records across the platform"
         right={
           <div className="flex items-center gap-2">
+            
             <WindowPicker
               value={rcWindow}
               onChange={setRcWindow}
@@ -567,6 +568,7 @@ export default function Dashboard() {
               onFrom={setRcFrom}
               onTo={setRcTo}
             />
+            <span className="text-xs text-slate-500">Rows</span>
             <input
               type="number"
               min={1}
