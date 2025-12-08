@@ -1,5 +1,6 @@
 // src/frontend/pages/BlogManagement.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Edit2, Trash2, Plus, X, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import api from '../services/api';
 import ReactQuill from 'react-quill-new';
 import 'quill/dist/quill.snow.css';
@@ -172,10 +173,11 @@ export default function BlogManagement() {
         <h1 className="text-2xl font-bold">Blog Management</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-600">
-            {me?.user_id ? `Logged in as ${me.name || me.email || '#'+me.user_id} (id: ${me.user_id})` : 'Not logged in'}
+            {me?.user_id ? `Logged in as ${me.name || me.email || '#' + me.user_id} (id: ${me.user_id})` : 'Not logged in'}
           </span>
-          <button onClick={openNew} className="px-4 py-2 bg-blue-600 text-white rounded">
-            New Blog
+          <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+            <Plus size={20} />
+            <span>New Blog</span>
           </button>
         </div>
       </div>
@@ -188,11 +190,11 @@ export default function BlogManagement() {
             <thead>
               <tr className="bg-gray-100 text-left">
                 <th className="p-2">ID</th>
+                <th className="p-2">Cover</th>
                 <th className="p-2">Title</th>
                 <th className="p-2">Author</th>
                 <th className="p-2">Created</th>
                 <th className="p-2">Updated</th>
-                <th className="p-2">Cover</th>
                 <th className="p-2">Actions</th>
               </tr>
             </thead>
@@ -200,18 +202,32 @@ export default function BlogManagement() {
               {blogs.map((b) => (
                 <tr key={b.id} className="border-t">
                   <td className="p-2">{b.id}</td>
-                  <td className="p-2">{b.title}</td>
-                  <td className="p-2">{b.author_name || `#${b.author_id}`}</td>
-                  <td className="p-2">{b.create_at ? new Date(b.create_at).toLocaleDateString() : '-'}</td>
-                  <td className="p-2">{b.update_at ? new Date(b.update_at).toLocaleDateString() : '-'}</td>
                   <td className="p-2">
                     {b.cover_image_url ? (
                       <img src={b.cover_image_url} className="w-20 h-14 object-cover rounded" />
                     ) : ('-')}
                   </td>
-                  <td className="p-2 space-x-2">
-                    <button className="px-2 py-1 bg-blue-100 rounded" onClick={() => openEdit(b)}>Edit</button>
-                    <button className="px-2 py-1 bg-red-100 rounded" onClick={() => handleDelete(b.id)}>Delete</button>
+                  <td className="p-2">{b.title}</td>
+                  <td className="p-2">{b.author_name || `#${b.author_id}`}</td>
+                  <td className="p-2">{b.create_at ? new Date(b.create_at).toLocaleDateString() : '-'}</td>
+                  <td className="p-2">{b.update_at ? new Date(b.update_at).toLocaleDateString() : '-'}</td>
+                  <td className="p-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
+                        onClick={() => openEdit(b)}
+                        title="Edit"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
+                        onClick={() => handleDelete(b.id)}
+                        title="Delete"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -224,74 +240,107 @@ export default function BlogManagement() {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-3xl bg-white rounded-xl shadow-lg">
-            <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold">{editing ? 'แก้ไขบทความ' : 'สร้างบทความใหม่'}</h3>
-              <button onClick={closeModal} className="text-gray-500 hover:text-gray-700">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b bg-gray-50/50 flex items-center justify-between shrink-0">
+              <h3 className="text-lg font-semibold text-gray-800">{editing ? 'Edit Blog' : 'Create New Blog'}</h3>
+              <button onClick={closeModal} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                <X size={20} />
+              </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                <div>
-                  <label className="block text-sm">Title</label>
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Title</label>
                   <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value.slice(0, 150))}
-                    className="w-full border px-3 py-2 rounded"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                    placeholder="Enter blog title..."
                     required
                   />
                 </div>
 
-                {/* ✅ แสดง Author แบบอ่านอย่างเดียว (ไม่แก้ไข) */}
-                <div>
-                  <label className="block text-sm">Author</label>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Author</label>
                   <input
                     value={
                       me?.user_id
                         ? `${me?.name || me?.email || ''} (id: ${me.user_id})`
                         : 'Not logged in'
                     }
-                    className="w-full border px-3 py-2 rounded bg-gray-50 text-gray-600"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
                     disabled
                     readOnly
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm">Cover image (optional)</label>
-                <input type="file" accept="image/*" onChange={(e) => setCover(e.target.files?.[0] || null)} />
-                {editing?.cover_image_url && !cover && (
-                  <div className="mt-2">
-                    <img src={editing.cover_image_url} className="w-32 h-20 object-cover rounded" />
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Cover Image</label>
+                <div className="flex flex-col md:flex-row items-start gap-6">
+                  <div className="flex-1 w-full">
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-blue-500 transition-colors group relative overflow-hidden">
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6 z-10">
+                        <Upload className="w-8 h-8 mb-2 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                        <p className="text-sm text-gray-500 group-hover:text-gray-700">
+                          <span className="font-semibold">Click to upload</span> or drag and drop
+                        </p>
+                        <p className="text-xs text-gray-400">SVG, PNG, JPG or GIF</p>
+                      </div>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => setCover(e.target.files?.[0] || null)} />
+                    </label>
+                    {cover && <p className="mt-2 text-sm text-green-600 flex items-center gap-1"><ImageIcon size={14} /> Selected: {cover.name}</p>}
                   </div>
-                )}
+
+                  {(editing?.cover_image_url || cover) && (
+                    <div className="shrink-0">
+                      <p className="text-xs text-gray-500 mb-2">Preview</p>
+                      <div className="w-48 h-32 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 relative shadow-sm">
+                        {cover ? (
+                          <img src={URL.createObjectURL(cover)} className="w-full h-full object-cover" alt="Preview" />
+                        ) : editing?.cover_image_url ? (
+                          <img src={editing.cover_image_url} className="w-full h-full object-cover" alt="Current cover" />
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm mb-1">Content</label>
-                <ReactQuill
-                  ref={quillRef as any}
-                  theme="snow"
-                  value={content}
-                  onChange={setContent}
-                  modules={modules}
-                  style={{ height: 300, marginBottom: 40 }}
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={closeModal} className="px-4 py-2 rounded border">ยกเลิก</button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-                  disabled={saving}
-                >
-                  {saving ? 'กำลังบันทึก…' : editing ? 'บันทึกการแก้ไข' : 'สร้างบทความ'}
-                </button>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Content</label>
+                <div className="prose-editor-wrapper border border-gray-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
+                  <ReactQuill
+                    ref={quillRef as any}
+                    theme="snow"
+                    value={content}
+                    onChange={setContent}
+                    modules={modules}
+                    className="h-[300px] mb-10"
+                  />
+                </div>
               </div>
             </form>
+
+            <div className="px-6 py-4 border-t bg-gray-50/50 flex justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-white hover:border-gray-300 hover:shadow-sm transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                disabled={saving}
+              >
+                {saving && <Loader2 size={18} className="animate-spin" />}
+                {saving ? 'Saving...' : editing ? 'Save Changes' : 'Create Blog'}
+              </button>
+            </div>
           </div>
         </div>
       )}

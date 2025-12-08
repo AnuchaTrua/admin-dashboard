@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Edit2, Ban, CheckCircle, Trash2, UserX, UserCheck } from 'lucide-react';
 import api from '../services/api';
 
 type User = {
@@ -307,9 +308,10 @@ export default function UserManagement() {
                   <td className="p-2">{u.phone}</td>
                   <td className="p-2">{u.role}</td>
                   <td className="p-2">
-                    <span className={Number(u.status) === 1 ? 'text-green-600' : 'text-red-600'}>
-                      {Number(u.status) === 1 ? 'Active' : 'Blocked'}
-                    </span>
+                    <div className={`flex items-center gap-1.5 ${Number(u.status) === 1 ? 'text-green-600' : 'text-red-600'}`}>
+                      {Number(u.status) === 1 ? <CheckCircle size={16} /> : <Ban size={16} />}
+                      <span>{Number(u.status) === 1 ? 'Active' : 'Blocked'}</span>
+                    </div>
                   </td>
                   <td className="p-2">{u.vehicle || '-'}</td>
                   <td className="p-2">
@@ -323,25 +325,30 @@ export default function UserManagement() {
                       'No pic'
                     )}
                   </td>
-                  <td className="p-2 space-x-2">
-                    <button
-                      onClick={() => setEditing(u)}
-                      className="px-2 py-1 bg-blue-100 rounded"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleBlockToggle(u)}
-                      className="px-2 py-1 bg-yellow-100 rounded"
-                    >
-                      {Number(u.status) === 1 ? 'Block' : 'Unblock'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(u.user_id)}
-                      className="px-2 py-1 bg-red-100 rounded"
-                    >
-                      Delete
-                    </button>
+                  <td className="p-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditing(u)}
+                        className="p-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors"
+                        title="Edit"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleBlockToggle(u)}
+                        className={`p-1.5 rounded transition-colors ${Number(u.status) === 1 ? 'bg-amber-50 text-amber-600 hover:bg-amber-100' : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
+                        title={Number(u.status) === 1 ? 'Block' : 'Unblock'}
+                      >
+                        {Number(u.status) === 1 ? <UserX size={16} /> : <UserCheck size={16} />}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(u.user_id)}
+                        className="p-1.5 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
