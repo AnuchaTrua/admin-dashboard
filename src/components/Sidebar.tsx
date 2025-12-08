@@ -31,7 +31,7 @@ export default function Sidebar() {
           Blog Management
         </NavLink>
         <NavLink to="/admin/points" className={({ isActive }) => (isActive ? activeClass : 'block px-4 py-2 rounded hover:bg-gray-50')}>
-          Point Management
+          Reward Management
         </NavLink>
 
         <button className="mt-4 px-4 py-2 w-full text-left rounded bg-red-50 hover:bg-red-100" onClick={handleLogout}>
