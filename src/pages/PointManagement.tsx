@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Edit2, Trash2, Plus, X, Search, Power, PowerOff, Upload, Image as ImageIcon } from 'lucide-react';
 import api from "../services/api";
 
 /* ---------- Types ---------- */
@@ -36,9 +37,8 @@ const toLocalInputValue = (mysqlDT?: string | null): string => {
 
 const StatusBadge = ({ active }: { active: 0 | 1 }) => (
   <span
-    className={`px-2 py-0.5 rounded text-xs ${
-      active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-700"
-    }`}
+    className={`px-2 py-0.5 rounded text-xs ${active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-700"
+      }`}
   >
     {active ? "Active" : "Inactive"}
   </span>
@@ -99,9 +99,7 @@ function RewardFormModal({
 
   if (!open) return null;
 
-  const handlePickFile = () => {
-    fileInputRef.current?.click();
-  };
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] || null;
@@ -160,137 +158,67 @@ function RewardFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b px-6 py-3">
-          <h3 className="text-lg font-semibold">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b bg-gray-50/50 flex items-center justify-between shrink-0">
+          <h3 className="text-lg font-semibold text-gray-800">
             {initial ? "Edit Reward" : "Create New Reward"}
           </h3>
-          <button onClick={onClose} className="rounded px-2 py-1 text-sm hover:bg-gray-100">
-            ✕
+          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
                 Reward name (max 120)
               </label>
               <input
-                className="w-full rounded border px-3 py-2"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 maxLength={120}
+                placeholder="e.g. 50% Off Coupon"
                 required
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">Point cost</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Point cost</label>
               <input
                 type="number"
                 min={0}
-                className="w-full rounded border px-3 py-2"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                 value={costPoints}
                 onChange={(e) =>
                   setCostPoints(e.target.value === "" ? "" : Number(e.target.value))
                 }
+                placeholder="0"
                 required
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">Stock</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Stock</label>
               <input
                 type="number"
                 min={0}
-                className="w-full rounded border px-3 py-2"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                 value={stock}
                 onChange={(e) =>
                   setStock(e.target.value === "" ? "" : Number(e.target.value))
                 }
+                placeholder="0"
                 required
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">
-                Start date &amp; time
-              </label>
-              <input
-                type="datetime-local"
-                className="w-full rounded border px-3 py-2"
-                value={startAtInput}
-                onChange={(e) => setStartAtInput(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">
-                Expire date &amp; time
-              </label>
-              <input
-                type="datetime-local"
-                className="w-full rounded border px-3 py-2"
-                value={expiresAtInput}
-                onChange={(e) => setExpiresAtInput(e.target.value)}
-              />
-            </div>
-
-            {/* Image: picker + preview + upload to S3 */}
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm text-gray-600">
-                Image (uploaded to S3)
-              </label>
-              <div className="flex items-center gap-4">
-                <div className="h-20 w-20 overflow-hidden rounded border bg-gray-50">
-                  {preview ? (
-                    <img src={preview} alt="preview" className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
-                      no image
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handlePickFile}
-                    className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
-                  >
-                    Choose image…
-                  </button>
-                  {imageUrl && !fileObj && (
-                    <span className="text-xs text-gray-500">
-                      Currently using existing image (will be replaced when you choose
-                      a new one).
-                    </span>
-                  )}
-                </div>
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm text-gray-600">Description</label>
-              <textarea
-                className="h-28 w-full resize-y rounded border px-3 py-2"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm text-gray-600">Status</label>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Status</label>
               <select
-                className="w-full rounded border px-3 py-2"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all bg-white"
                 value={active}
                 onChange={(e) => setActive(Number(e.target.value) ? 1 : 0)}
               >
@@ -298,24 +226,107 @@ function RewardFormModal({
                 <option value={0}>Inactive</option>
               </select>
             </div>
-          </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded border px-4 py-2"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded bg-blue-600 px-4 py-2 text-white"
-            >
-              Save
-            </button>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Start date &amp; time
+              </label>
+              <div className="relative">
+                <input
+                  type="datetime-local"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  value={startAtInput}
+                  onChange={(e) => setStartAtInput(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Expire date &amp; time
+              </label>
+              <div className="relative">
+                <input
+                  type="datetime-local"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  value={expiresAtInput}
+                  onChange={(e) => setExpiresAtInput(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Image: picker + preview + upload to S3 */}
+            <div className="md:col-span-2 space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Reward Image
+              </label>
+              <div className="flex flex-col md:flex-row items-start gap-6">
+                <div className="flex-1 w-full">
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-blue-500 transition-colors group relative overflow-hidden">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6 z-10">
+                      <Upload className="w-8 h-8 mb-2 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                      <p className="text-sm text-gray-500 group-hover:text-gray-700">
+                        <span className="font-semibold">Click to upload</span> or drag and drop
+                      </p>
+                      <p className="text-xs text-gray-400">SVG, PNG, JPG or GIF</p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                  </label>
+                  {imageUrl && !fileObj && (
+                    <p className="mt-2 text-xs text-gray-500">Using existing image. Upload new to replace.</p>
+                  )}
+                  {fileObj && <p className="mt-2 text-sm text-green-600 flex items-center gap-1"><ImageIcon size={14} /> Selected: {fileObj.name}</p>}
+                </div>
+
+                {(preview || imageUrl) && (
+                  <div className="shrink-0">
+                    <p className="text-xs text-gray-500 mb-2">Preview</p>
+                    <div className="w-32 h-32 rounded-xl border border-gray-200 overflow-hidden bg-gray-50 relative shadow-sm flex items-center justify-center">
+                      {preview ? (
+                        <img src={preview} alt="preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="text-xs text-gray-400">no image</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="md:col-span-2 space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Description</label>
+              <textarea
+                className="h-28 w-full resize-y rounded-lg border border-gray-200 px-3 py-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe the reward..."
+              />
+            </div>
           </div>
         </form>
+
+        <div className="px-6 py-4 border-t bg-gray-50/50 flex justify-end gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-white hover:border-gray-300 hover:shadow-sm transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            type="submit"
+            className="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {initial ? 'Save Changes' : 'Create Reward'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -430,20 +441,24 @@ export default function PointManagement() {
           </p>
         </div>
         <div className="flex w-full items-center gap-3 md:w-auto">
-          <input
-            className="w-full rounded border px-3 py-2 md:w-64"
-            placeholder="Search rewards…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+          <div className="relative w-full md:w-64">
+            <input
+              className="w-full rounded border pl-9 pr-3 py-2"
+              placeholder="Search rewards…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          </div>
           <button
             onClick={() => {
               setEditing(null);
               setOpenForm(true);
             }}
-            className="rounded bg-blue-600 px-4 py-2 text-white"
+            className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 transition-colors"
           >
-            + New Reward
+            <Plus size={20} />
+            <span>New Reward</span>
           </button>
         </div>
       </div>
@@ -501,26 +516,28 @@ export default function PointManagement() {
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                        className={`p-1.5 rounded border transition-colors ${r.active ? 'text-amber-600 border-amber-200 hover:bg-amber-50' : 'text-green-600 border-green-200 hover:bg-green-50'}`}
                         onClick={() => toggleActive(r)}
-                        title="Toggle Active"
+                        title={r.active ? "Deactivate" : "Activate"}
                       >
-                        {r.active ? "Deactivate" : "Activate"}
+                        {r.active ? <PowerOff size={16} /> : <Power size={16} />}
                       </button>
                       <button
-                        className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+                        className="p-1.5 rounded border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors"
                         onClick={() => {
                           setEditing(r);
                           setOpenForm(true);
                         }}
+                        title="Edit"
                       >
-                        Edit
+                        <Edit2 size={16} />
                       </button>
                       <button
-                        className="rounded bg-red-600 px-2 py-1 text-xs text-white"
+                        className="p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
                         onClick={() => setOpenDelete(r)}
+                        title="Delete"
                       >
-                        Delete
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -558,9 +575,8 @@ export default function PointManagement() {
       <ConfirmDialog
         open={!!openDelete}
         title="Delete reward"
-        message={`Are you sure you want to delete "${
-          openDelete?.title ?? ""
-        }"?`}
+        message={`Are you sure you want to delete "${openDelete?.title ?? ""
+          }"?`}
         onCancel={() => setOpenDelete(null)}
         onConfirm={handleDelete}
       />
