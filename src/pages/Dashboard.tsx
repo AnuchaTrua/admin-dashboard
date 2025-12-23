@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, Legend, BarChart, Bar, AreaChart, Area
+  BarChart, Bar, AreaChart, Area
 } from 'recharts';
 import {
   Users, UserCheck, UserX, ShieldCheck, UserPlus, Leaf, Flame,
@@ -41,6 +41,7 @@ type Summary = {
     active30: number;
   }
 };
+
 type HourRow = { hour: number; count: number };
 type DOWRow = { dow: number; count: number };
 type HistRow = { bin: number; count: number };
@@ -137,14 +138,12 @@ const CarbonBreakdown = ({ type, window, from, to }: { type: 'reduced' | 'emitte
       try {
         const params = { limit: 10, ...makeTimeParams(window, from, to) };
 
-        // ✅ Use specific ledger endpoint for reduced carbon
         if (type === 'reduced') {
           const res = await api.get('/admin/insights/ledger/reduced', { params });
           const raw = res.data?.data || [];
-          // Map response to RecentRow structure
           const mapped = raw.map((r: any, i: number) => ({
             id: i,
-            user_id: 0, // Not provided in ledger view
+            user_id: 0,
             name: r.user_name,
             type: r.type,
             distance_km: Number(r.distance_km || 0),
@@ -155,14 +154,13 @@ const CarbonBreakdown = ({ type, window, from, to }: { type: 'reduced' | 'emitte
           }));
           setData(mapped);
         } else {
-          // ✅ Use specific ledger endpoint for emitted carbon
           const res = await api.get('/admin/insights/ledger/emitted', { params });
           const raw = res.data?.data || [];
           const mapped = raw.map((r: any, i: number) => ({
             id: i,
             user_id: r.user_id || 0,
             name: r.user_name,
-            type: 'e_point', // Explicitly set type as it might come as 'e_point' from API
+            type: 'e_point',
             distance_km: Number(r.distance_km || 0),
             carbon: Number(r.carbon_emitted || 0),
             pace_kmh: null,
@@ -313,33 +311,23 @@ export default function Dashboard() {
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dowToName = (dow: number) => weekdays[(dow - 1 + 7) % 7];
 
-  const COLORS = useMemo(
-    () => ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#ec4899'],
-    []
-  );
-
   const fetchAll = async () => {
     setError(null);
     setLoading(true);
     try {
-      // summary
       const sumReq = api.get('/admin/summary');
 
-      // charts
       const chartParams = { type: chartType, ...makeTimeParams(chartWindow, chartFrom, chartTo) };
       const hourReq = api.get('/admin/insights/hourly', { params: chartParams });
       const dowReq = api.get('/admin/insights/weekday', { params: chartParams });
       const histReq = api.get('/admin/insights/distance_hist', { params: chartParams });
 
-      // leaderboard
       const lbParams = { metric: lbMetric, ...makeTimeParams(lbWindow, lbFrom, lbTo) };
       const lbReq = api.get('/admin/insights/leaderboard', { params: lbParams });
 
-      // recent activities
       const rcParams = { limit: rcLimit, ...makeTimeParams(rcWindow, rcFrom, rcTo) };
       const rcReq = api.get('/admin/recent-activities', { params: rcParams });
 
-      // carbon aggregates
       const agParams = makeTimeParams(agWindow, agFrom, agTo);
       const agReq = api.get('/admin/insights/aggregates', { params: agParams });
 
@@ -347,9 +335,16 @@ export default function Dashboard() {
         await Promise.all([sumReq, hourReq, dowReq, histReq, lbReq, rcReq, agReq]);
 
       setSummary(sumRes.data?.data ?? null);
-      setHourly(hourRes.data?.data ?? []);
-      setWeekday(dowRes.data?.data ?? []);
-      setHist(histRes.data?.data ?? []);
+
+      // ✅ coerce counts to numbers (fix: bars disappearing when values come as string)
+      const hourData: HourRow[] = (hourRes.data?.data ?? []).map((r: any) => ({ hour: Number(r.hour), count: Number(r.count) || 0 }));
+      const dowData: DOWRow[] = (dowRes.data?.data ?? []).map((r: any) => ({ dow: Number(r.dow), count: Number(r.count) || 0 }));
+      const histData: HistRow[] = (histRes.data?.data ?? []).map((r: any) => ({ bin: Number(r.bin), count: Number(r.count) || 0 }));
+
+      setHourly(hourData);
+      setWeekday(dowData);
+      setHist(histData);
+
       setLeaders(lbRes.data?.data ?? []);
       setRecent(rcRes.data?.data ?? []);
       setAggregates(agRes.data?.data ?? { carbon_reduced: 0, carbon_emitted: 0 });
@@ -373,14 +368,9 @@ export default function Dashboard() {
   ]);
 
   const ov = summary?.overview;
-  const statusPie = (summary?.status_breakdown ?? []).map(s => ({
-    name: s.status === 1 ? 'Active' : 'Blocked',
-    value: s.count,
-  }));
   const monthlyData = summary?.monthly_signups ?? [];
   const sparkData = monthlyData.map(d => ({ x: d.month, y: d.users }));
 
-  /** ✅ Time window selector with "All time" as default option */
   const WindowPicker = ({
     value, onChange, from, to, onFrom, onTo
   }: {
@@ -425,9 +415,15 @@ export default function Dashboard() {
     </div>
   );
 
+  // ✅ helper: give stroke = fill to ensure visible even if CSS overrides fill
+  const barStyle = (fill: string) => ({
+    fill,
+    stroke: fill,
+    strokeWidth: 1
+  });
+
   return (
     <div className="space-y-6">
-      {/* ===== Header ===== */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Dashboard</h2>
@@ -437,53 +433,21 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ===== Error Notice ===== */}
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl">
           {error}
         </div>
       )}
 
-      {/* ===== TOP KPIs: Users ===== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
         {loading && Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         {!loading && (
           <>
-            <StatCard
-              title="Total users"
-              value={ov?.total_users ?? 0}
-              icon={<Users size={20} />}
-              accent="blue"
-              hint="All registered accounts"
-            />
-            <StatCard
-              title="Active users"
-              value={ov?.active_users ?? 0}
-              icon={<UserCheck size={20} />}
-              accent="emerald"
-              hint="Status = active"
-            />
-            <StatCard
-              title="Blocked users"
-              value={ov?.blocked_users ?? 0}
-              icon={<UserX size={20} />}
-              accent="rose"
-              hint="Status = blocked"
-            />
-            <StatCard
-              title="Admins"
-              value={ov?.admins ?? 0}
-              icon={<ShieldCheck size={20} />}
-              accent="violet"
-              hint="Users with admin role"
-            />
-            <StatCard
-              title="New users (7 days)"
-              value={ov?.new_7d ?? 0}
-              icon={<UserPlus size={20} />}
-              accent="amber"
-              hint="Accounts created in the last 7 days"
-            />
+            <StatCard title="Total users" value={ov?.total_users ?? 0} icon={<Users size={20} />} accent="blue" hint="All registered accounts" />
+            <StatCard title="Active users" value={ov?.active_users ?? 0} icon={<UserCheck size={20} />} accent="emerald" hint="Status = active" />
+            <StatCard title="Blocked users" value={ov?.blocked_users ?? 0} icon={<UserX size={20} />} accent="rose" hint="Status = blocked" />
+            <StatCard title="Admins" value={ov?.admins ?? 0} icon={<ShieldCheck size={20} />} accent="violet" hint="Users with admin role" />
+            <StatCard title="New users (7 days)" value={ov?.new_7d ?? 0} icon={<UserPlus size={20} />} accent="amber" hint="Accounts created in the last 7 days" />
             <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
               <div className="text-xs uppercase tracking-wide text-slate-500">Growth spark</div>
               <div className="text-xs text-slate-400 mt-1">User signups (last 12 months)</div>
@@ -493,59 +457,20 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ===== Growth & Mix ===== */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Section
-          title="User growth"
-          subtitle="New accounts per month (last 12 months)"
-        >
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Line type="monotone" dataKey="users" stroke="#2563eb" dot={false} strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Section>
+      <Section title="User growth" subtitle="New accounts per month (last 12 months)">
+        <div className="h-72">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={monthlyData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" tick={{ fontSize: 12 }} minTickGap={8} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+              <Tooltip />
+              <Line type="monotone" dataKey="users" stroke="#2563eb" dot={false} strokeWidth={2} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Section>
 
-        <Section
-          title="User mix"
-          subtitle="Account status and roles"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="h-64">
-              <div className="text-sm text-slate-600 mb-2">Status breakdown</div>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={statusPie} dataKey="value" nameKey="name" outerRadius={90} label>
-                    {statusPie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="h-64">
-              <div className="text-sm text-slate-600 mb-2">Role breakdown</div>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={summary?.role_breakdown ?? []} dataKey="count" nameKey="role" outerRadius={90} label>
-                    {(summary?.role_breakdown ?? []).map((_, i) => <Cell key={i} fill={COLORS[(i + 3) % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </Section>
-      </div>
-
-      {/* ===== Carbon KPIs (with time filter) ===== */}
       <Section
         title="Carbon KPIs"
         subtitle="Total carbon reduction and estimated emissions for the selected period"
@@ -586,7 +511,7 @@ export default function Dashboard() {
         </div>
       </Section>
 
-      {/* ===== Activity Charts (with filters) ===== */}
+      {/* ✅ Activity patterns (fixed bars) */}
       <Section
         title={`Activity patterns — ${chartType === 'walk' ? 'Walking' : 'Cycling'}`}
         subtitle="Distribution of activities by hour of day, day of week, and distance"
@@ -614,47 +539,102 @@ export default function Dashboard() {
           </div>
         }
       >
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="h-72">
-            <div className="mb-2 text-sm text-slate-600">By hour of day</div>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={hourly}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="hour" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill={chartType === 'walk' ? '#22c55e' : '#f59e0b'} />
-              </BarChart>
-            </ResponsiveContainer>
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          {/* --- Hour --- */}
+          <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 overflow-hidden">
+            <div className="mb-1 text-sm text-slate-700 font-medium">By hour of day</div>
+            <div className="mb-3 text-xs text-slate-400">
+              X = hour (0–23), Y = number of {chartType === 'walk' ? 'walking' : 'cycling'} records
+            </div>
+
+            <div className="h-60">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={hourly}
+                  margin={{ top: 6, right: 8, left: 0, bottom: 4 }}
+                  barCategoryGap={6}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 11 }} interval={2} minTickGap={6} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                  <Tooltip />
+                  <Bar
+                    dataKey="count"
+                    {...barStyle(chartType === 'walk' ? '#22c55e' : '#f59e0b')}
+                    radius={[6, 6, 0, 0]}
+                    barSize={14}
+                    maxBarSize={18}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="h-72">
-            <div className="mb-2 text-sm text-slate-600">By weekday</div>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weekday.map(r => ({ name: dowToName(r.dow), count: r.count }))}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill={chartType === 'walk' ? '#3b82f6' : '#ef4444'} />
-              </BarChart>
-            </ResponsiveContainer>
+
+          {/* --- Weekday --- */}
+          <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 overflow-hidden">
+            <div className="mb-1 text-sm text-slate-700 font-medium">By weekday</div>
+            <div className="mb-3 text-xs text-slate-400">
+              X = weekday (Sun–Sat), Y = number of {chartType === 'walk' ? 'walking' : 'cycling'} records
+            </div>
+
+            <div className="h-60">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={weekday.map(r => ({ name: dowToName(r.dow), count: Number(r.count) || 0 }))}
+                  margin={{ top: 6, right: 8, left: 0, bottom: 4 }}
+                  barCategoryGap={14}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} minTickGap={8} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                  <Tooltip />
+                  <Bar
+                    dataKey="count"
+                    {...barStyle(chartType === 'walk' ? '#3b82f6' : '#ef4444')}
+                    radius={[6, 6, 0, 0]}
+                    barSize={18}
+                    maxBarSize={22}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="h-72">
-            <div className="mb-2 text-sm text-slate-600">Distance histogram</div>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={hist}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="bin" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Bar dataKey="count" fill={chartType === 'walk' ? '#06b6d4' : '#84cc16'} />
-              </BarChart>
-            </ResponsiveContainer>
+
+          {/* --- Histogram --- */}
+          <div className="rounded-xl border border-slate-100 bg-slate-50/40 p-4 overflow-hidden">
+            <div className="mb-1 text-sm text-slate-700 font-medium">Distance histogram</div>
+            <div className="mb-3 text-xs text-slate-400">
+              X = distance bin (bucket from API), Y = number of {chartType === 'walk' ? 'walking' : 'cycling'} records in that bin
+            </div>
+
+            <div className="h-60">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={hist}
+                  margin={{ top: 6, right: 8, left: 0, bottom: 4 }}
+                  barCategoryGap={6}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="bin" tick={{ fontSize: 11 }} minTickGap={12} interval="preserveStartEnd" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                  <Tooltip />
+                  <Bar
+                    dataKey="count"
+                    {...barStyle(chartType === 'walk' ? '#06b6d4' : '#84cc16')}
+                    radius={[6, 6, 0, 0]}
+                    barSize={12}
+                    maxBarSize={16}
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </Section>
 
-      {/* ===== Leaderboard ===== */}
       <Section
         title={lbMetric === 'carbon' ? 'Carbon reduction leaderboard Top 10 Users' : 'Distance leaderboard Top 10 Users'}
         subtitle="Top users by total carbon saved or total distance"
@@ -707,13 +687,11 @@ export default function Dashboard() {
         </div>
       </Section>
 
-      {/* ===== Recent Activities ===== */}
       <Section
         title="Recent activities"
         subtitle="Latest walk & bike records across the platform"
         right={
           <div className="flex items-center gap-2">
-
             <WindowPicker
               value={rcWindow}
               onChange={setRcWindow}
